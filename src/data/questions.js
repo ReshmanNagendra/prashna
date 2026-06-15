@@ -1,0 +1,122 @@
+export default [
+  {
+    "id": 1,
+    "question": "A body of mass 2 kg moves with a velocity of 10 m/s. Find its kinetic energy.",
+    "subject": "Physics",
+    "topic": "Work, Energy and Power",
+    "exam": "JEE Main",
+    "year": 2024,
+    "shift": "Shift 1",
+    "options": ["50 J", "100 J", "150 J", "200 J"],
+    "correctOption": 1,
+    "explanation": "Kinetic Energy (KE) is given by the formula:\n\nKE = 0.5 * m * v²\n\nGiven:\n- Mass (m) = 2 kg\n- Velocity (v) = 10 m/s\n\nCalculation:\nKE = 0.5 * 2 * (10)²\nKE = 1 * 100\nKE = 100 Joules\n\nTherefore, the kinetic energy of the body is 100 J."
+  },
+  {
+    "id": 2,
+    "question": "A projectile is launched at 45°. What is the relation between range and maximum height?",
+    "subject": "Physics",
+    "topic": "Projectile Motion",
+    "exam": "JEE Main",
+    "year": 2023,
+    "shift": "Shift 2",
+    "options": ["R = H", "R = 2H", "R = 4H", "R = H/4"],
+    "correctOption": 2,
+    "explanation": "The formula for maximum height (H) and horizontal range (R) of a projectile are:\n- H = (u² * sin²θ) / 2g\n- R = (u² * sin2θ) / g\n\nAt θ = 45°:\n- H = (u² * sin²45°) / 2g = (u² * 0.5) / 2g = u² / 4g\n- R = (u² * sin90°) / g = u² / g\n\nComparing R and H:\nR = 4 * (u² / 4g) = 4H\n\nThus, Range (R) is equal to 4 times the Maximum Height (H)."
+  },
+  {
+    "id": 3,
+    "question": "A charge q is placed at a distance r from another charge q. Find the electrostatic force between them.",
+    "subject": "Physics",
+    "topic": "Electrostatics",
+    "exam": "JEE Main",
+    "year": 2022,
+    "shift": "Shift 1",
+    "options": ["kq²/r", "kq²/r²", "k²q²/r²", "kq/r²"],
+    "correctOption": 1,
+    "explanation": "According to Coulomb's Law, the electrostatic force (F) between two point charges q₁ and q₂ separated by a distance r is directly proportional to the product of the charges and inversely proportional to the square of the distance between them.\n\nFormula:\nF = k * (|q₁ * q₂|) / r²\n\nHere, q₁ = q₂ = q. So:\nF = k * q² / r²\n\nwhere k is Coulomb's constant (1 / 4πε₀)."
+  },
+  {
+    "id": 4,
+    "question": "Find the derivative of sin(x²).",
+    "subject": "Mathematics",
+    "topic": "Differential Calculus",
+    "exam": "JEE Main",
+    "year": 2024,
+    "shift": "Shift 1",
+    "options": ["cos(x²)", "2x * cos(x²)", "2 * cos(x)", "-2x * cos(x²)"],
+    "correctOption": 1,
+    "explanation": "To differentiate f(x) = sin(x²), we apply the Chain Rule:\n\nd/dx [f(g(x))] = f'(g(x)) * g'(x)\n\nLet:\n- Outer function f(u) = sin(u) -> f'(u) = cos(u)\n- Inner function g(x) = x² -> g'(x) = 2x\n\nCalculation:\nd/dx [sin(x²)] = cos(x²) * d/dx [x²]\n= cos(x²) * 2x\n= 2x * cos(x²)"
+  },
+  {
+    "id": 5,
+    "question": "Find the value of ∫(2x + 1) dx.",
+    "subject": "Mathematics",
+    "topic": "Integral Calculus",
+    "exam": "JEE Main",
+    "year": 2023,
+    "shift": "Shift 1",
+    "options": ["x² + x + C", "2x² + x + C", "x² + C", "x² + 2x + C"],
+    "correctOption": 0,
+    "explanation": "Integrating term-by-term using the power rule for integration:\n∫ xⁿ dx = (xⁿ⁺¹) / (n + 1) + C\n\nCalculation:\n∫(2x + 1) dx = ∫ 2x dx + ∫ 1 dx\n= 2 * (x² / 2) + x + C\n= x² + x + C\n\nwhere C is the constant of integration."
+  },
+  {
+    "id": 6,
+    "question": "Solve: x² - 5x + 6 = 0.",
+    "subject": "Mathematics",
+    "topic": "Quadratic Equations",
+    "exam": "JEE Main",
+    "year": 2022,
+    "shift": "Shift 2",
+    "options": ["x = 1, 6", "x = -2, -3", "x = 2, 3", "x = 1, 5"],
+    "correctOption": 2,
+    "explanation": "Factor the quadratic equation x² - 5x + 6 = 0:\n\nWe look for two numbers that multiply to 6 and add to -5. These numbers are -2 and -3.\n\nFactorization:\n(x - 2)(x - 3) = 0\n\nSetting each factor to zero:\n- x - 2 = 0 => x = 2\n- x - 3 = 0 => x = 3\n\nHence, the solutions are x = 2, 3."
+  },
+  {
+    "id": 7,
+    "question": "Find the probability of getting exactly two heads when three coins are tossed.",
+    "subject": "Mathematics",
+    "topic": "Probability",
+    "exam": "JEE Main",
+    "year": 2021,
+    "shift": "Shift 1",
+    "options": ["1/8", "3/8", "1/2", "5/8"],
+    "correctOption": 1,
+    "explanation": "When three fair coins are tossed, the sample space S has 2³ = 8 possible outcomes:\nS = {HHH, HHT, HTH, THH, HTT, THT, TTH, TTT}\n\nWe want the event E of getting exactly two heads:\nE = {HHT, HTH, THH}\n\nNumber of favorable outcomes n(E) = 3\nTotal number of outcomes n(S) = 8\n\nProbability P(E) = n(E) / n(S) = 3/8."
+  },
+  {
+    "id": 8,
+    "question": "Which of the following is the strongest reducing agent among alkali metals?",
+    "subject": "Chemistry",
+    "topic": "s-Block Elements",
+    "exam": "JEE Main",
+    "year": 2024,
+    "shift": "Shift 2",
+    "options": ["Sodium (Na)", "Potassium (K)", "Lithium (Li)", "Rubidium (Rb)"],
+    "correctOption": 2,
+    "explanation": "Lithium (Li) is the strongest reducing agent in aqueous solution among all alkali metals.\n\nReason:\nAlthough Lithium has the highest ionization energy among alkali metals, it has the smallest size and hence the highest hydration energy. The extremely high hydration enthalpy released when Li⁺ is dissolved in water more than compensates for its high ionization enthalpy, giving it the most negative standard reduction potential (E° = -3.05 V)."
+  },
+  {
+    "id": 9,
+    "question": "Calculate the pH of a solution having H⁺ concentration of 10⁻³ M.",
+    "subject": "Chemistry",
+    "topic": "Ionic Equilibrium",
+    "exam": "JEE Main",
+    "year": 2023,
+    "shift": "Shift 2",
+    "options": ["pH = 1", "pH = 3", "pH = 7", "pH = 10"],
+    "correctOption": 1,
+    "explanation": "The pH of a solution is defined as the negative logarithm (base 10) of the hydrogen ion concentration [H⁺].\n\nFormula:\npH = -log₁₀[H⁺]\n\nCalculation:\nGiven [H⁺] = 10⁻³ M\npH = -log₁₀(10⁻³)\npH = -(-3) * log₁₀(10)\npH = 3 * 1 = 3\n\nTherefore, the pH of the solution is 3."
+  },
+  {
+    "id": 10,
+    "question": "Which hybridization is present in methane (CH₄)?",
+    "subject": "Chemistry",
+    "topic": "Chemical Bonding",
+    "exam": "JEE Main",
+    "year": 2022,
+    "shift": "Shift 1",
+    "options": ["sp", "sp²", "sp³", "sp³d"],
+    "correctOption": 2,
+    "explanation": "In methane (CH₄), the central carbon atom has 4 valence electrons. It forms 4 single covalent bonds (sigma bonds) with 4 hydrogen atoms and has 0 lone pairs.\n\nCalculation of Steric Number:\nSteric Number = (Number of sigma bonds) + (Number of lone pairs)\nSteric Number = 4 + 0 = 4\n\nA steric number of 4 corresponds to sp³ hybridization, resulting in a tetrahedral molecular geometry with bond angles of 109.5°."
+  }
+]
