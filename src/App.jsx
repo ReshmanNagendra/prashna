@@ -1,6 +1,7 @@
 // src/App.jsx
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import LandingPage from './pages/LandingPage/LandingPage.jsx';
 import QuestionsPage from './pages/QuestionsPage/QuestionsPage.jsx';
 import SearchResultsPage from './pages/SearchResultsPage/SearchResultsPage.jsx';
@@ -41,6 +42,7 @@ export default function App() {
         {/* /question/:id → Detailed view of single PYQ */}
         <Route path="/question/:id" element={<QuestionDetailPage />} />
       </Routes>
+      <Analytics />
     </Router>
   );
 }
