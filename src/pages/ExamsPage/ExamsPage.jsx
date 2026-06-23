@@ -25,6 +25,7 @@ const EXAM_META = {
 export default function ExamsPage() {
   const [exams, setExams]         = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
 
   useEffect(() => {
     getFilterMetaData()
@@ -40,7 +41,10 @@ export default function ExamsPage() {
         list.sort((a, b) => (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0) || a.name.localeCompare(b.name));
         setExams(list);
       })
-      .catch(console.error)
+      .catch((err) => {
+        console.error('Exams fetch error:', err);
+        setFetchError(err?.message ?? 'Failed to load exams.');
+      })
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -65,12 +69,15 @@ export default function ExamsPage() {
           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
             Select an examination to explore and practice official past papers
           </p>
-        </div>
-
-        {/* Examinations List Grid */}
+        </div>        {/* Examinations List Grid */}
         {isLoading ? (
           <div className="flex-1 flex items-center justify-center py-20">
             <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+          </div>
+        ) : fetchError ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-20 text-center space-y-3 border-2 border-dashed border-red-200 dark:border-red-900 rounded-2xl bg-red-50/50 dark:bg-red-950/20">
+            <p className="text-base font-bold text-red-650 dark:text-red-400">Failed to load exams</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs">{fetchError}</p>
           </div>
         ) : exams.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-12">
