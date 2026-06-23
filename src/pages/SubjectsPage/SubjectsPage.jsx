@@ -14,6 +14,7 @@ import { Loader2, ArrowRight, BookOpen, GraduationCap, Atom, TestTube2 } from 'l
 export default function SubjectsPage() {
   const [subjects, setSubjects] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
 
   useEffect(() => {
     getFilterMetaData()
@@ -22,7 +23,10 @@ export default function SubjectsPage() {
         const list = [...meta.subjects].sort((a, b) => a.name.localeCompare(b.name));
         setSubjects(list);
       })
-      .catch(console.error)
+      .catch((err) => {
+        console.error('Subjects fetch error:', err);
+        setFetchError(err?.message ?? 'Failed to load subjects.');
+      })
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -85,6 +89,11 @@ export default function SubjectsPage() {
           {isLoading ? (
             <div className="flex-1 flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+            </div>
+          ) : fetchError ? (
+            <div className="flex-1 flex flex-col items-center justify-center py-20 text-center space-y-3 border-2 border-dashed border-red-200 dark:border-red-900 rounded-2xl bg-red-50/50 dark:bg-red-950/20">
+              <p className="text-base font-bold text-red-650 dark:text-red-400">Failed to load subjects</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs">{fetchError}</p>
             </div>
           ) : subjects.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-12">
