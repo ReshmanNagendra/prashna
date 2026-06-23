@@ -8,6 +8,12 @@ const AuthContext = createContext(null);
  * Wraps the app to provide the current Supabase session and user to all children.
  */
 export function AuthProvider({ children }) {
+  if (!supabase) {
+    throw new Error(
+      'Missing Supabase configuration. Please ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in your environment variables (e.g. Vercel project settings).'
+    );
+  }
+
   const [session, setSession] = useState(null);
   const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true);
