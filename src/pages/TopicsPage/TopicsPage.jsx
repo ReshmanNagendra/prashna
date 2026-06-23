@@ -2,78 +2,63 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from '../../components/Navbar/Navbar.jsx';
-import { getAllQuestions } from '../../services/questionService.js';
+import { getFilterMetaData } from '../../services/questionService.js';
 import { Loader2, ArrowRight, BookOpen, GraduationCap, Atom, TestTube2 } from 'lucide-react';
 
 /**
  * TopicsPage - Dedicated page to list all topics grouped by Subject.
+ * Uses cached metadata instead of fetching all questions.
  *
  * @component
  */
 export default function TopicsPage() {
   const [subjectsData, setSubjectsData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading]       = useState(true);
 
   useEffect(() => {
-    async function loadTopics() {
-      setIsLoading(true);
-      const questions = await getAllQuestions();
-      
-      const groups = {};
-      questions.forEach((q) => {
-        if (!groups[q.subject]) {
-          groups[q.subject] = {
-            subjectName: q.subject,
-            topicsMap: {}
-          };
-        }
-        if (!groups[q.subject].topicsMap[q.topic]) {
-          groups[q.subject].topicsMap[q.topic] = 0;
-        }
-        groups[q.subject].topicsMap[q.topic] += 1;
-      });
+    getFilterMetaData()
+      .then((meta) => {
+        // Build subject → topics hierarchy from cached metadata
+        const list = meta.subjects
+          .map((sub) => {
+            // chapters that belong to this subject
+            const subjectChapters = new Set(
+              meta.chapters
+                .filter((c) => c.subject_id === sub.id)
+                .map((c) => c.id)
+            );
+            // topics that belong to those chapters
+            const topics = meta.topics
+              .filter((t) => subjectChapters.has(t.chapter_id))
+              .map((t) => ({ id: t.id, name: t.name }))
+              .sort((a, b) => a.name.localeCompare(b.name));
 
-      const list = Object.values(groups).map((g) => {
-        const topics = Object.entries(g.topicsMap).map(([name, count]) => ({
-          name,
-          totalQuestions: count
-        })).sort((a, b) => a.name.localeCompare(b.name));
+            return { subjectId: sub.id, subjectName: sub.name, topics };
+          })
+          .filter((s) => s.topics.length > 0)
+          .sort((a, b) => a.subjectName.localeCompare(b.subjectName));
 
-        return {
-          subjectName: g.subjectName,
-          topics
-        };
-      }).sort((a, b) => a.subjectName.localeCompare(b.subjectName));
-
-      setSubjectsData(list);
-      setIsLoading(false);
-    }
-    loadTopics();
+        setSubjectsData(list);
+      })
+      .catch(console.error)
+      .finally(() => setIsLoading(false));
   }, []);
 
   const getSubjectIcon = (name) => {
     switch (name.toLowerCase()) {
-      case 'physics':
-        return <Atom size={18} className="text-blue-500" />;
-      case 'chemistry':
-        return <TestTube2 size={18} className="text-amber-500" />;
-      case 'mathematics':
-        return <GraduationCap size={18} className="text-purple-500" />;
-      default:
-        return <BookOpen size={18} className="text-emerald-500" />;
+      case 'physics':     return <Atom size={18} className="text-blue-500" />;
+      case 'chemistry':   return <TestTube2 size={18} className="text-amber-500" />;
+      case 'mathematics': return <GraduationCap size={18} className="text-purple-500" />;
+      default:            return <BookOpen size={18} className="text-emerald-500" />;
     }
   };
 
   const getSubjectBadgeStyle = (name) => {
     switch (name.toLowerCase()) {
-      case 'physics':
-        return 'bg-blue-500/10 text-blue-600 dark:text-blue-400';
-      case 'chemistry':
-        return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
-      case 'mathematics':
-        return 'bg-purple-500/10 text-purple-600 dark:text-purple-400';
-      default:
-        return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
+      case 'physics':     return 'bg-blue-500/10 text-blue-600 dark:text-blue-400';
+      case 'chemistry':   return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
+      case 'mathematics': return 'bg-purple-500/10 text-purple-600 dark:text-purple-400';
+      default:            return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
     }
   };
 
@@ -109,7 +94,7 @@ export default function TopicsPage() {
           ) : subjectsData.length > 0 ? (
             <div className="space-y-8 pb-12">
               {subjectsData.map((subj) => (
-                <div key={subj.subjectName} className="space-y-4">
+                <div key={subj.subjectId} className="space-y-4">
                   {/* Subject Heading */}
                   <div className="flex items-center gap-2.5">
                     <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-850 shrink-0">
@@ -127,16 +112,13 @@ export default function TopicsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {subj.topics.map((topic) => (
                       <Link
-                        key={topic.name}
-                        to={`/questions?subject=${encodeURIComponent(subj.subjectName)}&topic=${encodeURIComponent(topic.name)}`}
+                        key={topic.id}
+                        to={`/questions?subjectId=${encodeURIComponent(subj.subjectId)}&topicId=${encodeURIComponent(topic.id)}`}
                         className="p-5 rounded-2xl border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-emerald-500/30 hover:shadow-md transition-all duration-300 flex items-center justify-between group cursor-pointer block text-left"
                       >
                         <div className="space-y-0.5 text-left pr-4">
                           <p className="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-emerald-500 transition-colors">
                             {topic.name}
-                          </p>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-extrabold uppercase tracking-wider">
-                            {topic.totalQuestions} {topic.totalQuestions === 1 ? 'Question' : 'Questions'}
                           </p>
                         </div>
 

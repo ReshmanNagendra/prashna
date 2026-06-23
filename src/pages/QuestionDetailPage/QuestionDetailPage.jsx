@@ -22,21 +22,27 @@ export default function QuestionDetailPage() {
   useEffect(() => {
     async function loadQuestion() {
       setIsLoading(true);
-      const data = await getQuestionById(id);
-      if (data) {
-        setQuestion(data);
-      } else {
-        // Graceful redirect back if parameter ID doesn't exist
+      try {
+        const data = await getQuestionById(id);
+        if (data) {
+          setQuestion(data);
+        } else {
+          // Graceful redirect back if parameter ID doesn't exist
+          navigate('/questions');
+        }
+      } catch (err) {
+        console.error('Question detail load error:', err);
         navigate('/questions');
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     }
     loadQuestion();
   }, [id, navigate]);
 
   const handleCopy = () => {
     if (question) {
-      navigator.clipboard.writeText(question.question);
+      navigator.clipboard.writeText(question.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -98,7 +104,7 @@ export default function QuestionDetailPage() {
 
           <div className="space-y-4">
             <p className="text-lg md:text-xl font-medium leading-relaxed tracking-tight text-slate-800 dark:text-slate-100 select-all">
-              {question.question}
+              {question.content}
             </p>
           </div>
         </div>
@@ -112,7 +118,7 @@ export default function QuestionDetailPage() {
             </div>
             <div>
               <p className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Subject</p>
-              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{question.subject}</p>
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{question.subjects?.name ?? '—'}</p>
             </div>
           </div>
 
@@ -123,7 +129,7 @@ export default function QuestionDetailPage() {
             </div>
             <div>
               <p className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Topic</p>
-              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{question.topic}</p>
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{question.topics?.name ?? '—'}</p>
             </div>
           </div>
 
@@ -134,7 +140,7 @@ export default function QuestionDetailPage() {
             </div>
             <div>
               <p className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Exam</p>
-              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{question.exam}</p>
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{question.exams?.name ?? '—'}</p>
             </div>
           </div>
 
@@ -145,7 +151,7 @@ export default function QuestionDetailPage() {
             </div>
             <div>
               <p className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Year</p>
-              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{question.year}</p>
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{question.papers?.year ?? '—'}</p>
             </div>
           </div>
         </div>

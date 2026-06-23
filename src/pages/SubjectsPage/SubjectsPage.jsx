@@ -2,11 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from '../../components/Navbar/Navbar.jsx';
-import { getAllQuestions } from '../../services/questionService.js';
+import { getFilterMetaData } from '../../services/questionService.js';
 import { Loader2, ArrowRight, BookOpen, GraduationCap, Atom, TestTube2 } from 'lucide-react';
 
 /**
  * SubjectsPage - Dedicated page to list all subjects with metadata.
+ * Uses cached metadata instead of fetching all questions.
  *
  * @component
  */
@@ -15,39 +16,22 @@ export default function SubjectsPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    async function loadSubjects() {
-      setIsLoading(true);
-      const questions = await getAllQuestions();
-      
-      const counts = {};
-      questions.forEach((q) => {
-        if (!counts[q.subject]) {
-          counts[q.subject] = 0;
-        }
-        counts[q.subject] += 1;
-      });
-
-      const list = Object.entries(counts).map(([name, count]) => ({
-        name,
-        totalQuestions: count
-      })).sort((a, b) => a.name.localeCompare(b.name));
-
-      setSubjects(list);
-      setIsLoading(false);
-    }
-    loadSubjects();
+    getFilterMetaData()
+      .then((meta) => {
+        // Use subjects directly from cache, sorted alphabetically
+        const list = [...meta.subjects].sort((a, b) => a.name.localeCompare(b.name));
+        setSubjects(list);
+      })
+      .catch(console.error)
+      .finally(() => setIsLoading(false));
   }, []);
 
   const getSubjectIcon = (name) => {
     switch (name.toLowerCase()) {
-      case 'physics':
-        return <Atom size={24} className="text-blue-500" />;
-      case 'chemistry':
-        return <TestTube2 size={24} className="text-amber-500" />;
-      case 'mathematics':
-        return <GraduationCap size={24} className="text-purple-500" />;
-      default:
-        return <BookOpen size={24} className="text-emerald-500" />;
+      case 'physics':     return <Atom size={24} className="text-blue-500" />;
+      case 'chemistry':   return <TestTube2 size={24} className="text-amber-500" />;
+      case 'mathematics': return <GraduationCap size={24} className="text-purple-500" />;
+      default:            return <BookOpen size={24} className="text-emerald-500" />;
     }
   };
 
@@ -66,14 +50,10 @@ export default function SubjectsPage() {
 
   const getCardStyle = (name) => {
     switch (name.toLowerCase()) {
-      case 'physics':
-        return 'hover:border-blue-500/40 hover:shadow-blue-500/5';
-      case 'chemistry':
-        return 'hover:border-amber-500/40 hover:shadow-amber-500/5';
-      case 'mathematics':
-        return 'hover:border-purple-500/40 hover:shadow-purple-500/5';
-      default:
-        return 'hover:border-emerald-500/40 hover:shadow-emerald-500/5';
+      case 'physics':     return 'hover:border-blue-500/40 hover:shadow-blue-500/5';
+      case 'chemistry':   return 'hover:border-amber-500/40 hover:shadow-amber-500/5';
+      case 'mathematics': return 'hover:border-purple-500/40 hover:shadow-purple-500/5';
+      default:            return 'hover:border-emerald-500/40 hover:shadow-emerald-500/5';
     }
   };
 
@@ -110,8 +90,8 @@ export default function SubjectsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-12">
               {subjects.map((sub) => (
                 <Link
-                  key={sub.name}
-                  to={`/questions?subject=${encodeURIComponent(sub.name)}`}
+                  key={sub.id}
+                  to={`/questions?subjectId=${encodeURIComponent(sub.id)}`}
                   className={`p-6 rounded-3xl border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 transition-all duration-300 flex flex-col justify-between group hover:shadow-lg ${getCardStyle(sub.name)}`}
                 >
                   <div className="space-y-4">
@@ -135,10 +115,10 @@ export default function SubjectsPage() {
                   <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-850 flex items-center justify-between">
                     <div>
                       <p className="text-[10px] font-extrabold text-slate-450 dark:text-slate-500 uppercase tracking-wider">
-                        Total Items
+                        Exam
                       </p>
                       <p className="text-sm font-extrabold text-slate-700 dark:text-slate-350">
-                        {sub.totalQuestions} {sub.totalQuestions === 1 ? 'Question' : 'Questions'}
+                        {sub.name}
                       </p>
                     </div>
 

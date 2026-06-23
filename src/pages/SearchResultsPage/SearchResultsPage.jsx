@@ -1,5 +1,5 @@
 // src/pages/SearchResultsPage/SearchResultsPage.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import Navbar from '../../components/Navbar/Navbar.jsx';
 import QuestionCard from '../../components/QuestionCard/QuestionCard.jsx';
@@ -17,16 +17,30 @@ export default function SearchResultsPage() {
   const [searchParams] = useSearchParams();
   const query = searchParams.get('q') || '';
   const [questions, setQuestions] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading]  = useState(false); // start false — don't flash spinner on empty query
+  const debounceRef = useRef(null);
 
   useEffect(() => {
-    async function performSearch() {
-      setIsLoading(true);
-      const results = await searchQuestions(query);
-      setQuestions(results);
+    if (!query.trim()) {
+      setQuestions([]);
       setIsLoading(false);
+      return;
     }
-    performSearch();
+    // Debounce: wait 300ms after the user stops typing before hitting Supabase
+    setIsLoading(true);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const results = await searchQuestions(query);
+        setQuestions(results);
+      } catch (err) {
+        console.error('Search error:', err);
+        setQuestions([]);
+      } finally {
+        setIsLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
   }, [query]);
 
   return (

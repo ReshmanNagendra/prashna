@@ -1,6 +1,8 @@
 // src/App.jsx
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary.jsx';
 import LandingPage from './pages/LandingPage/LandingPage.jsx';
 import QuestionsPage from './pages/QuestionsPage/QuestionsPage.jsx';
 import SearchResultsPage from './pages/SearchResultsPage/SearchResultsPage.jsx';
@@ -9,38 +11,47 @@ import PapersPage from './pages/PapersPage/PapersPage.jsx';
 import SubjectsPage from './pages/SubjectsPage/SubjectsPage.jsx';
 import TopicsPage from './pages/TopicsPage/TopicsPage.jsx';
 import ExamsPage from './pages/ExamsPage/ExamsPage.jsx';
+import AuthPage from './pages/AuthPage/AuthPage.jsx';
 
 /**
  * App component setting up global React Router paths.
+ * Wrapped in AuthProvider so all pages can access the auth session.
  */
 export default function App() {
   return (
-    <Router>
-      <Routes>
-        {/* / → Existing LandingPage (UNCHANGED UI) */}
-        <Route path="/" element={<LandingPage />} />
+    <ErrorBoundary>
+      <AuthProvider>
+        <Router>
+          <Routes>
+            {/* / → Landing page */}
+            <Route path="/" element={<LandingPage />} />
 
-        {/* /questions → Browse and filter all PYQs */}
-        <Route path="/questions" element={<QuestionsPage />} />
+            {/* /auth → Login / Sign Up */}
+            <Route path="/auth" element={<AuthPage />} />
 
-        {/* /papers → Browse exam papers by year in list view */}
-        <Route path="/papers" element={<PapersPage />} />
+            {/* /questions → Browse and filter all PYQs */}
+            <Route path="/questions" element={<QuestionsPage />} />
 
-        {/* /subjects → Dedicated page listing all subjects */}
-        <Route path="/subjects" element={<SubjectsPage />} />
+            {/* /papers → Browse exam papers by year */}
+            <Route path="/papers" element={<PapersPage />} />
 
-        {/* /topics → Dedicated page listing all topics grouped by subject */}
-        <Route path="/topics" element={<TopicsPage />} />
+            {/* /subjects → Dedicated page listing all subjects */}
+            <Route path="/subjects" element={<SubjectsPage />} />
 
-        {/* /exams → Dedicated page listing examinations (JEE Main active, others locked) */}
-        <Route path="/exams" element={<ExamsPage />} />
+            {/* /topics → Topics grouped by subject */}
+            <Route path="/topics" element={<TopicsPage />} />
 
-        {/* /search → Display query results */}
-        <Route path="/search" element={<SearchResultsPage />} />
+            {/* /exams → Examinations catalog */}
+            <Route path="/exams" element={<ExamsPage />} />
 
-        {/* /question/:id → Detailed view of single PYQ */}
-        <Route path="/question/:id" element={<QuestionDetailPage />} />
-      </Routes>
-    </Router>
+            {/* /search → Display query results */}
+            <Route path="/search" element={<SearchResultsPage />} />
+
+            {/* /question/:id → Detailed view of a single PYQ */}
+            <Route path="/question/:id" element={<QuestionDetailPage />} />
+          </Routes>
+        </Router>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
