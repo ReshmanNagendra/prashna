@@ -10,7 +10,18 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 --------------------------------------------------------------------------------
 
 -- Enum for question types: single-choice MCQ, multiple-choice MCQ, and numerical input
-CREATE TYPE public.question_type AS ENUM ('mcq_single', 'mcq_multiple', 'numerical');
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE t.typname = 'question_type'
+      AND n.nspname = 'public'
+  ) THEN
+    CREATE TYPE public.question_type AS ENUM ('mcq_single', 'mcq_multiple', 'numerical');
+  END IF;
+END $$;
 
 -- Reusable function to automatically update updated_at timestamps
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
@@ -26,7 +37,7 @@ $$ LANGUAGE plpgsql;
 --------------------------------------------------------------------------------
 
 -- Exams table (e.g., JEE Main, NEET, GATE, UPSC)
-CREATE TABLE public.exams (
+CREATE TABLE IF NOT EXISTS public.exams (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     code TEXT NOT NULL UNIQUE, -- E.g., 'jee_main', 'neet', 'gate'
@@ -37,7 +48,7 @@ CREATE TABLE public.exams (
 
 -- Subjects table (e.g., Physics, Chemistry, Mathematics, History)
 -- Each subject is linked to a specific exam.
-CREATE TABLE public.subjects (
+CREATE TABLE IF NOT EXISTS public.subjects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     exam_id UUID NOT NULL REFERENCES public.exams(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -49,7 +60,7 @@ CREATE TABLE public.subjects (
 
 -- Chapters table (e.g., Electrostatics, Rotational Mechanics, Organic Synthesis)
 -- Each chapter belongs to a specific subject.
-CREATE TABLE public.chapters (
+CREATE TABLE IF NOT EXISTS public.chapters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     subject_id UUID NOT NULL REFERENCES public.subjects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -60,7 +71,7 @@ CREATE TABLE public.chapters (
 
 -- Topics table (e.g., Coulomb's Law, Gauss's Law, Torque, SN1 vs SN2 Reactions)
 -- Each topic belongs to a specific chapter.
-CREATE TABLE public.topics (
+CREATE TABLE IF NOT EXISTS public.topics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chapter_id UUID NOT NULL REFERENCES public.chapters(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -74,7 +85,7 @@ CREATE TABLE public.topics (
 --------------------------------------------------------------------------------
 
 -- Papers table represents a specific exam sitting (e.g., JEE Main 2024 Session 1 Shift 1)
-CREATE TABLE public.papers (
+CREATE TABLE IF NOT EXISTS public.papers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     exam_id UUID NOT NULL REFERENCES public.exams(id) ON DELETE CASCADE,
     year INT NOT NULL CHECK (year >= 1900 AND year <= 2100),
@@ -89,7 +100,7 @@ CREATE TABLE public.papers (
 
 -- Unique index to prevent duplicate papers under the same exam, year, session, and shift.
 -- Uses COALESCE since NULL values do not conflict under standard UNIQUE constraints.
-CREATE UNIQUE INDEX papers_exam_year_session_shift_idx 
+CREATE UNIQUE INDEX IF NOT EXISTS papers_exam_year_session_shift_idx 
 ON public.papers (exam_id, year, COALESCE(session, ''), COALESCE(shift, ''));
 
 --------------------------------------------------------------------------------
@@ -99,7 +110,7 @@ ON public.papers (exam_id, year, COALESCE(session, ''), COALESCE(shift, ''));
 -- Questions table stores individual questions.
 -- Denormalized foreign keys (exam_id, subject_id, chapter_id, topic_id) are used to
 -- bypass deep multi-table joins during high-frequency list and filter queries.
-CREATE TABLE public.questions (
+CREATE TABLE IF NOT EXISTS public.questions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     exam_id UUID NOT NULL REFERENCES public.exams(id) ON DELETE CASCADE,
     subject_id UUID NOT NULL REFERENCES public.subjects(id) ON DELETE CASCADE,
@@ -121,7 +132,7 @@ CREATE TABLE public.questions (
 );
 
 -- MCQ Options table (for MCQ single/multiple choice questions)
-CREATE TABLE public.question_options (
+CREATE TABLE IF NOT EXISTS public.question_options (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     question_id UUID NOT NULL REFERENCES public.questions(id) ON DELETE CASCADE,
     option_letter TEXT NOT NULL, -- E.g., 'A', 'B', 'C', 'D'
@@ -132,7 +143,7 @@ CREATE TABLE public.question_options (
 );
 
 -- Question Solutions table (keeps solution content isolated for faster question index loads)
-CREATE TABLE public.question_solutions (
+CREATE TABLE IF NOT EXISTS public.question_solutions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     question_id UUID NOT NULL REFERENCES public.questions(id) ON DELETE CASCADE UNIQUE,
     content TEXT NOT NULL, -- Explanation detail (supports LaTeX/Markdown)
@@ -147,7 +158,7 @@ CREATE TABLE public.question_solutions (
 --------------------------------------------------------------------------------
 
 -- Public user profiles (references auth.users in Supabase Auth schema)
-CREATE TABLE public.profiles (
+CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     full_name TEXT,
     avatar_url TEXT,
@@ -157,7 +168,7 @@ CREATE TABLE public.profiles (
 );
 
 -- Bookmarks table allowing users to save questions with personalized study notes
-CREATE TABLE public.bookmarks (
+CREATE TABLE IF NOT EXISTS public.bookmarks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     question_id UUID NOT NULL REFERENCES public.questions(id) ON DELETE CASCADE,
@@ -167,7 +178,7 @@ CREATE TABLE public.bookmarks (
 );
 
 -- PDF Exports metadata (for asynchronous PDF generation from filtered questions)
-CREATE TABLE public.pdf_exports (
+CREATE TABLE IF NOT EXISTS public.pdf_exports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
@@ -185,14 +196,31 @@ CREATE TABLE public.pdf_exports (
 --------------------------------------------------------------------------------
 
 -- Bind update triggers to update updated_at timestamps automatically
+DROP TRIGGER IF EXISTS update_exams_updated_at ON public.exams;
 CREATE TRIGGER update_exams_updated_at BEFORE UPDATE ON public.exams FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_subjects_updated_at ON public.subjects;
 CREATE TRIGGER update_subjects_updated_at BEFORE UPDATE ON public.subjects FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_chapters_updated_at ON public.chapters;
 CREATE TRIGGER update_chapters_updated_at BEFORE UPDATE ON public.chapters FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_topics_updated_at ON public.topics;
 CREATE TRIGGER update_topics_updated_at BEFORE UPDATE ON public.topics FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_papers_updated_at ON public.papers;
 CREATE TRIGGER update_papers_updated_at BEFORE UPDATE ON public.papers FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_questions_updated_at ON public.questions;
 CREATE TRIGGER update_questions_updated_at BEFORE UPDATE ON public.questions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_question_solutions_updated_at ON public.question_solutions;
 CREATE TRIGGER update_question_solutions_updated_at BEFORE UPDATE ON public.question_solutions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
 CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_pdf_exports_updated_at ON public.pdf_exports;
 CREATE TRIGGER update_pdf_exports_updated_at BEFORE UPDATE ON public.pdf_exports FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- Function and trigger to auto-create profile when a new user signs up via Supabase Auth
@@ -204,7 +232,8 @@ BEGIN
         NEW.id,
         COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', ''),
         COALESCE(NEW.raw_user_meta_data->>'avatar_url', '')
-    );
+    )
+    ON CONFLICT (id) DO NOTHING;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -233,32 +262,61 @@ ALTER TABLE public.bookmarks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pdf_exports ENABLE ROW LEVEL SECURITY;
 
 -- 7a. Public Read-Only Access Policies
+DROP POLICY IF EXISTS "Allow public read access" ON public.exams;
 CREATE POLICY "Allow public read access" ON public.exams FOR SELECT TO public USING (true);
+
+DROP POLICY IF EXISTS "Allow public read access" ON public.subjects;
 CREATE POLICY "Allow public read access" ON public.subjects FOR SELECT TO public USING (true);
+
+DROP POLICY IF EXISTS "Allow public read access" ON public.chapters;
 CREATE POLICY "Allow public read access" ON public.chapters FOR SELECT TO public USING (true);
+
+DROP POLICY IF EXISTS "Allow public read access" ON public.topics;
 CREATE POLICY "Allow public read access" ON public.topics FOR SELECT TO public USING (true);
+
+DROP POLICY IF EXISTS "Allow public read access" ON public.papers;
 CREATE POLICY "Allow public read access" ON public.papers FOR SELECT TO public USING (true);
+
+DROP POLICY IF EXISTS "Allow public read access" ON public.questions;
 CREATE POLICY "Allow public read access" ON public.questions FOR SELECT TO public USING (true);
+
+DROP POLICY IF EXISTS "Allow public read access" ON public.question_options;
 CREATE POLICY "Allow public read access" ON public.question_options FOR SELECT TO public USING (true);
+
+DROP POLICY IF EXISTS "Allow public read access" ON public.question_solutions;
 CREATE POLICY "Allow public read access" ON public.question_solutions FOR SELECT TO public USING (true);
+
+DROP POLICY IF EXISTS "Allow public read access" ON public.profiles;
 CREATE POLICY "Allow public read access" ON public.profiles FOR SELECT TO public USING (true);
 
--- Note: Data entry and updates to core academic assets (questions, solutions, papers, topics, chapters, etc.) 
--- are managed by administrators via Supabase service_role, bypassing RLS automatically.
-
 -- 7b. Profile Security (Owning user can edit)
+DROP POLICY IF EXISTS "Allow users to update own profile" ON public.profiles;
 CREATE POLICY "Allow users to update own profile" ON public.profiles FOR UPDATE TO authenticated USING (auth.uid() = id);
 
 -- 7c. Bookmark Security (Strict user separation)
+DROP POLICY IF EXISTS "Allow users to read own bookmarks" ON public.bookmarks;
 CREATE POLICY "Allow users to read own bookmarks" ON public.bookmarks FOR SELECT TO authenticated USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Allow users to create own bookmarks" ON public.bookmarks;
 CREATE POLICY "Allow users to create own bookmarks" ON public.bookmarks FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Allow users to update own bookmarks" ON public.bookmarks;
 CREATE POLICY "Allow users to update own bookmarks" ON public.bookmarks FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Allow users to delete own bookmarks" ON public.bookmarks;
 CREATE POLICY "Allow users to delete own bookmarks" ON public.bookmarks FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
 -- 7d. PDF Export Security (Strict user separation)
+DROP POLICY IF EXISTS "Allow users to read own pdf exports" ON public.pdf_exports;
 CREATE POLICY "Allow users to read own pdf exports" ON public.pdf_exports FOR SELECT TO authenticated USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Allow users to create own pdf exports" ON public.pdf_exports;
 CREATE POLICY "Allow users to create own pdf exports" ON public.pdf_exports FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Allow users to update own pdf exports" ON public.pdf_exports;
 CREATE POLICY "Allow users to update own pdf exports" ON public.pdf_exports FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Allow users to delete own pdf exports" ON public.pdf_exports;
 CREATE POLICY "Allow users to delete own pdf exports" ON public.pdf_exports FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
 --------------------------------------------------------------------------------
