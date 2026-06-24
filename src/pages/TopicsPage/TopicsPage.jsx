@@ -21,6 +21,9 @@ export default function TopicsPage() {
         // Build subject → topics hierarchy from cached metadata
         const list = meta.subjects
           .map((sub) => {
+            const exam = meta.exams.find((e) => e.id === sub.exam_id);
+            const examName = exam ? exam.name : 'Unknown Exam';
+
             // chapters that belong to this subject
             const subjectChapters = new Set(
               meta.chapters
@@ -33,10 +36,10 @@ export default function TopicsPage() {
               .map((t) => ({ id: t.id, name: t.name }))
               .sort((a, b) => a.name.localeCompare(b.name));
 
-            return { subjectId: sub.id, subjectName: sub.name, topics };
+            return { subjectId: sub.id, subjectName: sub.name, examName, topics };
           })
           .filter((s) => s.topics.length > 0)
-          .sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+          .sort((a, b) => a.examName.localeCompare(b.examName) || a.subjectName.localeCompare(b.subjectName));
 
         setSubjectsData(list);
       })
@@ -103,6 +106,10 @@ export default function TopicsPage() {
                     <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
                       {subj.subjectName}
                     </h2>
+                    {/* Exam Name badge */}
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-slate-200/70 dark:bg-slate-800 text-slate-650 dark:text-slate-400 uppercase tracking-wide">
+                      {subj.examName}
+                    </span>
                     <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide ${getSubjectBadgeStyle(subj.subjectName)}`}>
                       {subj.topics.length} {subj.topics.length === 1 ? 'Topic' : 'Topics'}
                     </span>

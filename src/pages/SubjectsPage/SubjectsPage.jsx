@@ -19,9 +19,32 @@ export default function SubjectsPage() {
   useEffect(() => {
     getFilterMetaData()
       .then((meta) => {
-        // Use subjects directly from cache, sorted alphabetically
-        const list = [...meta.subjects].sort((a, b) => a.name.localeCompare(b.name));
-        setSubjects(list);
+        // Group subjects by their exam_id
+        const examsMap = {};
+        meta.exams.forEach((exam) => {
+          examsMap[exam.id] = {
+            name: exam.name,
+            subjects: [],
+          };
+        });
+
+        meta.subjects.forEach((sub) => {
+          if (examsMap[sub.exam_id]) {
+            examsMap[sub.exam_id].subjects.push(sub);
+          }
+        });
+
+        // Convert to sorted array of exam groups
+        const grouped = Object.keys(examsMap)
+          .map((id) => ({
+            examId: id,
+            examName: examsMap[id].name,
+            subjects: examsMap[id].subjects.sort((a, b) => a.name.localeCompare(b.name)),
+          }))
+          .filter((group) => group.subjects.length > 0)
+          .sort((a, b) => a.examName.localeCompare(b.examName));
+
+        setSubjects(grouped);
       })
       .catch((err) => {
         console.error('Subjects fetch error:', err);
@@ -96,46 +119,60 @@ export default function SubjectsPage() {
               <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs">{fetchError}</p>
             </div>
           ) : subjects.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-12">
-              {subjects.map((sub) => (
-                <Link
-                  key={sub.id}
-                  to={`/questions?subjectId=${encodeURIComponent(sub.id)}`}
-                  className={`p-6 rounded-3xl border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 transition-all duration-300 flex flex-col justify-between group hover:shadow-lg ${getCardStyle(sub.name)}`}
-                >
-                  <div className="space-y-4">
-                    {/* Icon Header */}
-                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200/50 dark:border-slate-850 shrink-0 w-fit">
-                      {getSubjectIcon(sub.name)}
-                    </div>
-
-                    {/* Details */}
-                    <div className="space-y-2">
-                      <h2 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 group-hover:text-emerald-500 transition-colors">
-                        {sub.name}
-                      </h2>
-                      <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400 font-medium">
-                        {getSubjectDescription(sub.name)}
-                      </p>
-                    </div>
+            <div className="space-y-12 pb-12">
+              {subjects.map((group) => (
+                <div key={group.examId} className="space-y-6">
+                  {/* Exam Section Title */}
+                  <div className="border-b border-slate-200 dark:border-slate-850 pb-3">
+                    <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-emerald-350">
+                      {group.examName}
+                    </h2>
                   </div>
 
-                  {/* Metadata Footer */}
-                  <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-850 flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-extrabold text-slate-450 dark:text-slate-500 uppercase tracking-wider">
-                        Exam
-                      </p>
-                      <p className="text-sm font-extrabold text-slate-700 dark:text-slate-350">
-                        {sub.name}
-                      </p>
-                    </div>
+                  {/* Nested Grid of Subjects */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {group.subjects.map((sub) => (
+                      <Link
+                        key={sub.id}
+                        to={`/questions?subjectId=${encodeURIComponent(sub.id)}`}
+                        className={`p-6 rounded-3xl border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 transition-all duration-300 flex flex-col justify-between group hover:shadow-lg ${getCardStyle(sub.name)}`}
+                      >
+                        <div className="space-y-4">
+                          {/* Icon Header */}
+                          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200/50 dark:border-slate-850 shrink-0 w-fit">
+                            {getSubjectIcon(sub.name)}
+                          </div>
 
-                    <div className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 group-hover:border-emerald-500/30 text-slate-400 group-hover:text-emerald-500 transition-all shrink-0">
-                      <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-all" />
-                    </div>
+                          {/* Details */}
+                          <div className="space-y-2">
+                            <h2 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 group-hover:text-emerald-500 transition-colors">
+                              {sub.name}
+                            </h2>
+                            <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400 font-medium">
+                              {getSubjectDescription(sub.name)}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Metadata Footer */}
+                        <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-850 flex items-center justify-between">
+                          <div>
+                            <p className="text-[10px] font-extrabold text-slate-450 dark:text-slate-500 uppercase tracking-wider">
+                              Exam
+                            </p>
+                            <p className="text-sm font-extrabold text-slate-700 dark:text-slate-350">
+                              {group.examName}
+                            </p>
+                          </div>
+
+                          <div className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 group-hover:border-emerald-500/30 text-slate-400 group-hover:text-emerald-500 transition-all shrink-0">
+                            <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-all" />
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           ) : (
