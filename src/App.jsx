@@ -15,6 +15,7 @@ const SubjectsPage = lazy(() => import('./pages/SubjectsPage/SubjectsPage.jsx'))
 const TopicsPage = lazy(() => import('./pages/TopicsPage/TopicsPage.jsx'));
 const ExamsPage = lazy(() => import('./pages/ExamsPage/ExamsPage.jsx'));
 const AuthPage = lazy(() => import('./pages/AuthPage/AuthPage.jsx'));
+const AdminPage = lazy(() => import('./pages/AdminPage/AdminPage.jsx'));
 
 /**
  * Full-screen page loader fallback during lazy component loading.
@@ -64,6 +65,9 @@ export default function App() {
 
               {/* /question/:id → Detailed view of a single PYQ */}
               <Route path="/question/:id" element={<QuestionDetailPage />} />
+
+              {/* /admin → Admin / Moderator Dashboard */}
+              <Route path="/admin" element={<AdminPage />} />
             </Routes>
           </Suspense>
           <Analytics />

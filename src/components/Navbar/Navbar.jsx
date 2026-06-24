@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Sun, Moon, LogOut, LogIn, Bookmark, Search, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabaseClient';
 
 /**
  * Shared header navigation bar.
@@ -26,6 +27,23 @@ export default function Navbar() {
   const location = useLocation();
   const { user, signOut, loading } = useAuth();
   const inputRef = useRef(null);
+  const [isAdminOrMod, setIsAdminOrMod] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => {
+          setIsAdminOrMod(data && (data.role === 'admin' || data.role === 'moderator'));
+        })
+        .catch(() => setIsAdminOrMod(false));
+    } else {
+      setIsAdminOrMod(false);
+    }
+  }, [user]);
 
   // Keep dark-mode toggle in sync with the global <html> class
   useEffect(() => {
@@ -146,10 +164,19 @@ export default function Navbar() {
           </Link>
           <Link
             to="/exams"
-            className="px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-all"
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-650 dark:text-slate-300 transition-all"
           >
             Exams
           </Link>
+
+          {isAdminOrMod && (
+            <Link
+              to="/admin"
+              className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-450 hover:bg-emerald-500/20 transition-all"
+            >
+              Admin
+            </Link>
+          )}
 
           {user && (
             <Link
