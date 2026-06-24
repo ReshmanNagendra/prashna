@@ -197,3 +197,58 @@
   accent-color: #10b981;
   cursor: pointer;
 }
+
+/* Bulk uploader console and schema styles */
+.admin-logs-console {
+  background: #0f172a;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  font-family: 'Fira Code', 'Courier New', Courier, monospace;
+  font-size: 0.75rem;
+  max-height: 250px;
+  overflow-y: auto;
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.admin-log-line {
+  margin-bottom: 0.35rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.admin-log-line.info {
+  color: #38bdf8; /* Blue */
+}
+
+.admin-log-line.success {
+  color: #4ade80; /* Green */
+}
+
+.admin-log-line.error {
+  color: #f87171; /* Red */
+}
+
+.admin-log-time {
+  opacity: 0.5;
+  margin-right: 0.5rem;
+  font-weight: normal;
+}
+
+.admin-schema-pre {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.85rem;
+  padding: 1rem;
+  overflow-x: auto;
+  font-family: 'Fira Code', 'Courier New', Courier, monospace;
+  font-size: 0.75rem;
+  color: #0f172a;
+  line-height: 1.5;
+}
+
+.dark .admin-schema-pre {
+  background: #000;
+  border-color: rgba(255, 255, 255, 0.05);
+  color: #38bdf8;
+}

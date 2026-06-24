@@ -10,7 +10,7 @@ import './AdminPage.css';
 export default function AdminPage() {
   const [userRole, setUserRole] = useState(null);
   const [checkingRole, setCheckingRole] = useState(true);
-  const [activeTab, setActiveTab] = useState('exams'); // 'exams' | 'chapters' | 'papers' | 'questions'
+  const [activeTab, setActiveTab] = useState('exams'); // 'exams' | 'chapters' | 'papers' | 'questions' | 'bulk'
 
   // Metadata dropdown options
   const [meta, setMeta] = useState(null);
@@ -75,6 +75,11 @@ export default function AdminPage() {
   // Solution state
   const [solContent, setSolContent] = useState('');
   const [solVideoUrl, setSolVideoUrl] = useState('');
+
+  // Bulk Import Form states
+  const [bulkFile, setBulkFile] = useState(null);
+  const [bulkLogs, setBulkLogs] = useState([]);
+  const [bulkProgress, setBulkProgress] = useState(0);
 
   const navigate = useNavigate();
 
@@ -399,6 +404,198 @@ export default function AdminPage() {
     setOptions(updated);
   };
 
+  // 7. Bulk Upload actions
+  const handleBulkFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setBulkFile(file);
+      flashSuccess(`Loaded file "${file.name}" successfully. Ready to import.`);
+    }
+  };
+
+  const handleStartBulkImport = async () => {
+    if (!bulkFile) return flashError('Please select a JSON file first.');
+    setSubmitting(true);
+    setBulkLogs([]);
+    setBulkProgress(0);
+
+    const log = (type, message) => {
+      setBulkLogs((prev) => [...prev, { type, message, timestamp: new Date().toLocaleTimeString() }]);
+    };
+
+    try {
+      log('info', 'Reading and parsing JSON file...');
+      const text = await bulkFile.text();
+      const items = JSON.parse(text);
+
+      if (!Array.isArray(items)) {
+        throw new Error('JSON root must be an array of questions.');
+      }
+
+      log('info', `Found ${items.length} questions in JSON. Beginning ID resolution...`);
+
+      // Reload fresh metadata cache to avoid any outdated cache references
+      log('info', 'Fetching fresh database metadata...');
+      const currentMeta = await getFilterMetaData(true);
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const progressPct = Math.round(((i + 1) / items.length) * 100);
+        setBulkProgress(progressPct);
+
+        const qRef = `Q#${item.question_number || '?'}`;
+        log('info', `[${progressPct}%] Processing ${qRef} for exam code "${item.exam_code}"...`);
+
+        try {
+          // 1. Resolve Exam
+          const exam = currentMeta.exams.find(e => e.code === item.exam_code);
+          if (!exam) {
+            log('error', `Skipping ${qRef}: Exam with code "${item.exam_code}" not found in database.`);
+            continue;
+          }
+
+          // 2. Resolve Subject
+          const subject = currentMeta.subjects.find(s => 
+            s.exam_id === exam.id && 
+            s.name.toLowerCase() === item.subject_name.toLowerCase()
+          );
+          if (!subject) {
+            log('error', `Skipping ${qRef}: Subject "${item.subject_name}" not found for exam "${exam.name}".`);
+            continue;
+          }
+
+          // 3. Resolve or Create Chapter
+          let chapter = currentMeta.chapters.find(c => 
+            c.subject_id === subject.id && 
+            c.name.toLowerCase() === item.chapter_name.toLowerCase()
+          );
+          if (!chapter) {
+            log('info', `Creating chapter "${item.chapter_name}"...`);
+            const { data: newChap, error: chapErr } = await supabase
+              .from('chapters')
+              .insert([{ name: item.chapter_name, subject_id: subject.id, sequence_order: 1 }])
+              .select('id, name, subject_id')
+              .single();
+            if (chapErr) throw new Error(`Chapter create failed: ${chapErr.message}`);
+            chapter = newChap;
+            currentMeta.chapters.push(chapter);
+          }
+
+          // 4. Resolve or Create Topic
+          let topic = currentMeta.topics.find(t => 
+            t.chapter_id === chapter.id && 
+            t.name.toLowerCase() === item.topic_name.toLowerCase()
+          );
+          if (!topic) {
+            log('info', `Creating topic "${item.topic_name}"...`);
+            const { data: newTopic, error: topErr } = await supabase
+              .from('topics')
+              .insert([{ name: item.topic_name, chapter_id: chapter.id }])
+              .select('id, name, chapter_id')
+              .single();
+            if (topErr) throw new Error(`Topic create failed: ${topErr.message}`);
+            topic = newTopic;
+            currentMeta.topics.push(topic);
+          }
+
+          // 5. Resolve or Create Paper
+          let paper = currentMeta.papers.find(p => 
+            p.exam_id === exam.id && 
+            p.year === parseInt(item.paper_year, 10) && 
+            (p.session || null) === (item.paper_session || null) && 
+            (p.shift || null) === (item.paper_shift || null)
+          );
+          if (!paper) {
+            log('info', `Creating paper sitting: ${item.paper_year} ${item.paper_session || ''} ${item.paper_shift || ''}...`);
+            const { data: newPaper, error: papErr } = await supabase
+              .from('papers')
+              .insert([{ 
+                exam_id: exam.id, 
+                year: parseInt(item.paper_year, 10), 
+                session: item.paper_session || null, 
+                shift: item.paper_shift || null 
+              }])
+              .select('id, year, session, shift, exam_id')
+              .single();
+            if (papErr) throw new Error(`Paper create failed: ${papErr.message}`);
+            paper = newPaper;
+            currentMeta.papers.push(paper);
+          }
+
+          // 6. Insert Question
+          const questionPayload = {
+            exam_id: exam.id,
+            subject_id: subject.id,
+            chapter_id: chapter.id,
+            topic_id: topic.id,
+            paper_id: paper.id,
+            question_number: parseInt(item.question_number, 10) || 1,
+            type: item.type || 'mcq_single',
+            content: item.content.trim(),
+            difficulty: item.difficulty || 'medium',
+            marks: parseFloat(item.marks) || 4,
+            negative_marks: parseFloat(item.negative_marks) || 1,
+            status: 'published'
+          };
+
+          if (item.type === 'numerical') {
+            questionPayload.numerical_answer = parseFloat(item.numerical_answer);
+            questionPayload.numerical_tolerance = parseFloat(item.numerical_tolerance) || 0;
+          }
+
+          const { data: qData, error: qErr } = await supabase
+            .from('questions')
+            .insert([questionPayload])
+            .select('id')
+            .single();
+
+          if (qErr) throw new Error(`Question insert failed: ${qErr.message}`);
+          const questionId = qData.id;
+
+          // 7. Insert Options (if MCQ)
+          if (item.options && (item.type === 'mcq_single' || item.type === 'mcq_multiple')) {
+            const optionsPayload = item.options.map(opt => ({
+              question_id: questionId,
+              option_letter: opt.letter,
+              content: opt.content.trim(),
+              is_correct: opt.is_correct || false
+            }));
+            const { error: optErr } = await supabase
+              .from('question_options')
+              .insert(optionsPayload);
+            if (optErr) throw new Error(`Options insert failed: ${optErr.message}`);
+          }
+
+          // 8. Insert Solution
+          if (item.solution || item.video_url) {
+            const { error: solErr } = await supabase
+              .from('question_solutions')
+              .insert([{
+                question_id: questionId,
+                content: item.solution ? item.solution.trim() : '',
+                video_url: item.video_url ? item.video_url.trim() : null
+              }]);
+            if (solErr) throw new Error(`Solution insert failed: ${solErr.message}`);
+          }
+
+          log('success', `[Success] Successfully imported question ${qRef}`);
+        } catch (itemErr) {
+          log('error', `Error importing ${qRef}: ${itemErr.message}`);
+        }
+      }
+
+      log('success', 'Bulk import process completed.');
+      flashSuccess('Bulk import finished. Check logs below for details.');
+      loadFreshMeta(); // Refresh local list dropdowns
+    } catch (err) {
+      console.error(err);
+      log('error', `Fatal process error: ${err.message}`);
+      flashError(`Fatal error during import: ${err.message}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // Checking Authentication state
   if (checkingRole) {
     return (
@@ -493,10 +690,16 @@ export default function AdminPage() {
           >
             Insert Questions
           </button>
+          <button
+            onClick={() => { setActiveTab('bulk'); setErrorMsg(''); setSuccessMsg(''); }}
+            className={`admin-tab-btn ${activeTab === 'bulk' ? 'active' : ''}`}
+          >
+            Bulk Import (JSON)
+          </button>
         </div>
 
         {/* Tab Contents */}
-        {loadingMeta && activeTab !== 'exams' ? (
+        {loadingMeta && activeTab !== 'exams' && activeTab !== 'bulk' ? (
           <div className="py-20 flex justify-center items-center">
             <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
           </div>
@@ -974,6 +1177,99 @@ export default function AdminPage() {
                   Publish Question to Platform
                 </button>
               </form>
+            )}
+
+            {/* 5. BULK IMPORT TAB */}
+            {activeTab === 'bulk' && (
+              <div className="space-y-6">
+                <div className="admin-card-form w-full">
+                  <h2 className="admin-form-title">Bulk Import Questions from JSON</h2>
+                  
+                  <div className="admin-field">
+                    <label>Select JSON File</label>
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleBulkFileChange}
+                      className="cursor-pointer"
+                    />
+                  </div>
+
+                  <button 
+                    onClick={handleStartBulkImport} 
+                    className="admin-submit-btn max-w-xs" 
+                    type="button" 
+                    disabled={submitting || !bulkFile}
+                  >
+                    {submitting ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                    Start Bulk Import
+                  </button>
+
+                  {/* Progress Bar */}
+                  {submitting && (
+                    <div className="mt-6 space-y-2">
+                      <div className="flex justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
+                        <span>Import Progress</span>
+                        <span>{bulkProgress}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-emerald-500 transition-all duration-300"
+                          style={{ width: `${bulkProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Live Logs console */}
+                  {bulkLogs.length > 0 && (
+                    <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-850">
+                      <h3 className="text-base font-bold text-slate-800 dark:text-slate-200 mb-3">Process Logs</h3>
+                      <div className="admin-logs-console">
+                        {bulkLogs.map((log, index) => (
+                          <div key={index} className={`admin-log-line ${log.type}`}>
+                            <span className="admin-log-time">[{log.timestamp}]</span>
+                            <span className="admin-log-msg">{log.message}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Schema Documentation guide */}
+                <div className="p-6 bg-slate-50 dark:bg-slate-900/40 rounded-3xl border border-slate-200 dark:border-slate-850">
+                  <h3 className="text-sm font-extrabold text-slate-700 dark:text-slate-350 uppercase tracking-wider mb-3">Expected JSON Format Schema</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+                    Prepare a JSON file containing an array of question objects. Existing Exams and Subjects are matched by code and name respectively, while Chapters, Topics, and Paper Sittings will be created automatically if they do not exist.
+                  </p>
+                  <pre className="admin-schema-pre">
+{`[
+  {
+    "exam_code": "jee_main",
+    "subject_name": "Physics",
+    "chapter_name": "Mechanics",
+    "topic_name": "Circular Motion",
+    "paper_year": 2020,
+    "paper_session": "January",
+    "paper_shift": "Shift 1",
+    "question_number": 1,
+    "type": "mcq_single",
+    "difficulty": "medium",
+    "marks": 4,
+    "negative_marks": 1,
+    "content": "A body of mass $m$ is moving in a circle...",
+    "options": [
+      { "letter": "A", "content": "10 m/s", "is_correct": false },
+      { "letter": "B", "content": "20 m/s", "is_correct": true }
+    ],
+    "solution": "Using formula $v = \\\\omega r$...",
+    "video_url": "https://youtube.com/... (optional)"
+  }
+]`}
+                  </pre>
+                </div>
+              </div>
             )}
 
           </div>
