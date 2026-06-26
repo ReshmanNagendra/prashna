@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, Bookmark, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { toggleBookmark, getBookmarkedIds } from '../../services/bookmarkService.js';
+import MathText from '../MathText/MathText.jsx';
 
 /**
  * Reusable presentational card for displaying question summaries.
@@ -163,9 +164,9 @@ export default function QuestionCard({ question, siblingTopics }) {
         </div>
 
         {/* Question Text */}
-        <p className="text-lg sm:text-xl font-bold leading-relaxed tracking-tight text-slate-850 dark:text-slate-50 mb-6 select-all">
+        <MathText as="p" className="text-lg sm:text-xl font-bold leading-relaxed tracking-tight text-slate-850 dark:text-slate-50 mb-6 select-all">
           {content}
-        </p>
+        </MathText>
 
         {/* MCQ Options Grid */}
         {type !== 'numerical' && sortedOptions.length > 0 && (
@@ -195,7 +196,7 @@ export default function QuestionCard({ question, siblingTopics }) {
                   className={`p-4 rounded-2xl border text-sm sm:text-base text-left transition-all font-semibold flex items-center gap-3.5 w-full cursor-pointer ${btnClass}`}
                 >
                   <span className={`text-xs uppercase shrink-0 ${labelClass}`}>{label}.</span>
-                  <span>{opt.content}</span>
+                  <MathText as="span">{opt.content}</MathText>
                 </button>
               );
             })}
@@ -233,12 +234,12 @@ export default function QuestionCard({ question, siblingTopics }) {
 
         {/* Explanation expanding block */}
         {showExplanation && explanation && (
-          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-[#fbfdfc] dark:bg-slate-950 text-slate-700 dark:text-slate-300 text-xs md:text-sm font-medium leading-relaxed whitespace-pre-line text-left transition-all duration-300">
+          <MathText className="p-4 rounded-xl border border-slate-200 dark:border-slate-850 bg-[#fbfdfc] dark:bg-slate-950 text-slate-700 dark:text-slate-300 text-xs md:text-sm font-medium leading-relaxed whitespace-pre-line text-left transition-all duration-300">
             <h4 className="font-extrabold text-slate-800 dark:text-slate-200 mb-2 border-b border-slate-100 dark:border-slate-900 pb-1.5">
               Solution & Explanation
             </h4>
             {explanation}
-          </div>
+          </MathText>
         )}
 
         {/* Related Topics Row */}

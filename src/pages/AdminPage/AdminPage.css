@@ -252,3 +252,53 @@
   border-color: rgba(255, 255, 255, 0.05);
   color: #38bdf8;
 }
+
+/* AI Screenshot Scanner Styles */
+.admin-scanner-uploader {
+  min-height: 250px;
+  cursor: pointer;
+  background: #fff;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark .admin-scanner-uploader {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.admin-scanner-uploader:hover {
+  background: rgba(16, 185, 129, 0.02);
+  border-color: #10b981;
+}
+
+.dark .admin-scanner-uploader:hover {
+  background: rgba(16, 185, 129, 0.04);
+}
+
+.admin-api-key-banner {
+  background: rgba(0, 0, 0, 0.01);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.dark .admin-api-key-banner {
+  background: rgba(255, 255, 255, 0.01);
+  border-color: rgba(255, 255, 255, 0.03);
+}
+
+.admin-api-key-banner input[type="password"] {
+  height: 38px;
+  width: 220px;
+  border-radius: 0.75rem;
+  border: 1px solid #cbd5e1;
+  font-family: monospace;
+}
+
+.dark .admin-api-key-banner input[type="password"] {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.admin-api-key-banner input[type="password"]:focus {
+  border-color: #10b981;
+  outline: none;
+}
+
