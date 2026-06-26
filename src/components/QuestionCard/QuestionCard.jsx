@@ -21,6 +21,7 @@ export default function QuestionCard({ question, siblingTopics }) {
     id,
     content,          // Supabase field (was `question` in mock)
     type,
+    image_urls,
     subjects,
     topics,
     exams,
@@ -167,6 +168,20 @@ export default function QuestionCard({ question, siblingTopics }) {
         <MathText as="p" className="text-lg sm:text-xl font-bold leading-relaxed tracking-tight text-slate-850 dark:text-slate-50 mb-6 select-all">
           {content}
         </MathText>
+
+        {/* Question Images */}
+        {image_urls && image_urls.length > 0 && (
+          <div className="flex flex-col gap-3 my-4 bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-850">
+            {image_urls.map((url, idx) => (
+              <img
+                key={idx}
+                src={url}
+                alt={`Question figure ${idx + 1}`}
+                className="max-h-80 object-contain rounded-lg mx-auto"
+              />
+            ))}
+          </div>
+        )}
 
         {/* MCQ Options Grid */}
         {type !== 'numerical' && sortedOptions.length > 0 && (

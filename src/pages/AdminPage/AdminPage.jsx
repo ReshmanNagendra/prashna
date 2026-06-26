@@ -60,6 +60,8 @@ export default function AdminPage() {
   const [qMarks, setQMarks] = useState('4');
   const [qNegMarks, setQNegMarks] = useState('1');
   const [qContent, setQContent] = useState('');
+  const [qImageUrls, setQImageUrls] = useState([]);
+  const [uploadingImage, setUploadingImage] = useState(false);
   
   // MCQ Options state (4 options default)
   const [options, setOptions] = useState([
@@ -97,6 +99,19 @@ export default function AdminPage() {
   const [scanTopicId, setScanTopicId] = useState('');
   const [scanPaperId, setScanPaperId] = useState('');
   const [scanNumber, setScanNumber] = useState('1');
+
+  // Inline Creator Modal states
+  const [showNewChapModal, setShowNewChapModal] = useState(false);
+  const [newChapName, setNewChapName] = useState('');
+  const [newChapSeq, setNewChapSeq] = useState('1');
+
+  const [showNewTopicModal, setShowNewTopicModal] = useState(false);
+  const [newTopicName, setNewTopicName] = useState('');
+
+  const [showNewPaperModal, setShowNewPaperModal] = useState(false);
+  const [newPaperYear, setNewPaperYear] = useState(new Date().getFullYear().toString());
+  const [newPaperSession, setNewPaperSession] = useState('');
+  const [newPaperShift, setNewPaperShift] = useState('');
 
   const navigate = useNavigate();
 
@@ -384,6 +399,83 @@ export default function AdminPage() {
     }
   };
 
+  // Helper to upload diagram to Supabase public storage bucket
+  const uploadImageToSupabase = async (file) => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random().toString(36).substring(2, 9)}-${Date.now()}.${fileExt}`;
+    const filePath = `questions/${fileName}`;
+
+    const { data, error } = await supabase.storage
+      .from('question-images')
+      .upload(filePath, file);
+
+    if (error) throw error;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('question-images')
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  };
+
+  const handleManualImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const publicUrl = await uploadImageToSupabase(file);
+      setQImageUrls(prev => [...prev, publicUrl]);
+      flashSuccess('Diagram uploaded successfully!');
+    } catch (err) {
+      console.error(err);
+      flashError(`Diagram upload failed: ${err.message}`);
+    } finally {
+      setUploadingImage(false);
+      e.target.value = ''; // Reset file input
+    }
+  };
+
+  const handleRemoveManualImage = (index) => {
+    setQImageUrls(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleScannedQuestionImageUpload = async (qIndex, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const publicUrl = await uploadImageToSupabase(file);
+      setScannedQuestions(prev => {
+        const updated = [...prev];
+        const currentUrls = updated[qIndex].image_urls || [];
+        updated[qIndex] = {
+          ...updated[qIndex],
+          image_urls: [...currentUrls, publicUrl]
+        };
+        return updated;
+      });
+      flashSuccess('Diagram uploaded successfully!');
+    } catch (err) {
+      console.error(err);
+      flashError(`Diagram upload failed: ${err.message}`);
+    } finally {
+      setUploadingImage(false);
+      e.target.value = ''; // Reset file input
+    }
+  };
+
+  const handleRemoveScannedQuestionImage = (qIndex, imgIndex) => {
+    setScannedQuestions(prev => {
+      const updated = [...prev];
+      const currentUrls = updated[qIndex].image_urls || [];
+      updated[qIndex] = {
+        ...updated[qIndex],
+        image_urls: currentUrls.filter((_, idx) => idx !== imgIndex)
+      };
+      return updated;
+    });
+  };
+
   // 6. Create Question (Complex insert transaction)
   const handleCreateQuestion = async (e) => {
     e.preventDefault();
@@ -407,6 +499,7 @@ export default function AdminPage() {
         type: qType,
         content: qContent.trim(),
         difficulty: qDifficulty,
+        image_urls: qImageUrls,
         marks: parseFloat(qMarks) || 4,
         negative_marks: parseFloat(qNegMarks) || 1,
         status: 'published'
@@ -465,6 +558,7 @@ export default function AdminPage() {
       setNumericalAns('');
       setSolContent('');
       setSolVideoUrl('');
+      setQImageUrls([]);
       setOptions([
         { letter: 'A', content: '', isCorrect: false },
         { letter: 'B', content: '', isCorrect: false },
@@ -497,7 +591,7 @@ export default function AdminPage() {
   const runGeminiScan = async (base64Data, mimeType, apiKey) => {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     
-    const systemPrompt = `You are a high-fidelity data entry scanner. Analyze the question paper screenshot and convert it into a structured JSON representation.
+    const systemPrompt = `You are a high-fidelity data entry scanner. Analyze the question paper screenshot and convert it into a structured JSON representation containing a list of questions.
 Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use single dollars $...$ for inline math and double dollars $$...$$ for block equations). Ensure that math symbols and expressions inside question content, options, and explanation are fully wrapped in standard LaTeX format.`;
 
     const requestBody = {
@@ -519,26 +613,37 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
         responseSchema: {
           type: "OBJECT",
           properties: {
-            content: { type: "STRING", description: "The question text, retaining LaTeX formatting." },
-            type: { type: "STRING", enum: ["mcq_single", "mcq_multiple", "numerical"], description: "The type of question" },
-            difficulty: { type: "STRING", enum: ["easy", "medium", "hard"], description: "Difficulty level" },
-            options: {
+            questions: {
               type: "ARRAY",
+              description: "List of all questions detected in the screenshot image, in order of appearance.",
               items: {
                 type: "OBJECT",
                 properties: {
-                  letter: { type: "STRING", description: "Option letter like A, B, C, D" },
-                  content: { type: "STRING", description: "Option text, retaining LaTeX." },
-                  is_correct: { type: "BOOLEAN", description: "Whether this option is correct." }
+                  question_number: { type: "NUMBER", description: "The question number if visible on the image, otherwise null." },
+                  content: { type: "STRING", description: "The question text, retaining LaTeX formatting." },
+                  type: { type: "STRING", enum: ["mcq_single", "mcq_multiple", "numerical"], description: "The type of question" },
+                  difficulty: { type: "STRING", enum: ["easy", "medium", "hard"], description: "Difficulty level" },
+                  options: {
+                    type: "ARRAY",
+                    items: {
+                      type: "OBJECT",
+                      properties: {
+                        letter: { type: "STRING", description: "Option letter like A, B, C, D" },
+                        content: { type: "STRING", description: "Option text, retaining LaTeX." },
+                        is_correct: { type: "BOOLEAN", description: "Whether this option is correct." }
+                      },
+                      required: ["letter", "content", "is_correct"]
+                    }
+                  },
+                  numerical_answer: { type: "NUMBER", description: "Numeric answer value if type is numerical." },
+                  numerical_tolerance: { type: "NUMBER", description: "Allowed tolerance (defaults to 0)." },
+                  solution: { type: "STRING", description: "Step-by-step solution / explanation, retaining LaTeX." }
                 },
-                required: ["letter", "content", "is_correct"]
+                required: ["content", "type", "difficulty", "solution"]
               }
-            },
-            numerical_answer: { type: "NUMBER", description: "Numeric answer value if type is numerical." },
-            numerical_tolerance: { type: "NUMBER", description: "Allowed tolerance (defaults to 0)." },
-            solution: { type: "STRING", description: "Step-by-step solution / explanation, retaining LaTeX." }
+            }
           },
-          required: ["content", "type", "difficulty", "solution"]
+          required: ["questions"]
         }
       }
     };
@@ -563,13 +668,116 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
     return JSON.parse(textResponse);
   };
 
+  // Inline handlers for dynamic categories creation in AI Scanner
+  const handleInlineCreateChapter = async (e) => {
+    e.preventDefault();
+    if (!newChapName.trim() || !scanSubId) return flashError('Chapter Name and Subject are required.');
+    
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase
+        .from('chapters')
+        .insert([{ 
+          name: newChapName.trim(), 
+          subject_id: scanSubId, 
+          sequence_order: parseInt(newChapSeq, 10) || 1 
+        }])
+        .select('id, name, subject_id')
+        .single();
+
+      if (error) throw error;
+
+      flashSuccess(`Chapter "${newChapName}" created successfully!`);
+      setNewChapName('');
+      setNewChapSeq('1');
+      setShowNewChapModal(false);
+      
+      const freshMeta = await getFilterMetaData(true);
+      setMeta(freshMeta);
+      setScanChapId(data.id);
+    } catch (err) {
+      console.error(err);
+      flashError(err.message || 'Failed to create chapter.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleInlineCreateTopic = async (e) => {
+    e.preventDefault();
+    if (!newTopicName.trim() || !scanChapId) return flashError('Topic Name and Chapter are required.');
+    
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase
+        .from('topics')
+        .insert([{ 
+          name: newTopicName.trim(), 
+          chapter_id: scanChapId 
+        }])
+        .select('id, name, chapter_id')
+        .single();
+
+      if (error) throw error;
+
+      flashSuccess(`Topic "${newTopicName}" created successfully!`);
+      setNewTopicName('');
+      setShowNewTopicModal(false);
+      
+      const freshMeta = await getFilterMetaData(true);
+      setMeta(freshMeta);
+      setScanTopicId(data.id);
+    } catch (err) {
+      console.error(err);
+      flashError(err.message || 'Failed to create topic.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleInlineCreatePaper = async (e) => {
+    e.preventDefault();
+    if (!scanExamId || !newPaperYear) return flashError('Exam and Year are required.');
+    
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase
+        .from('papers')
+        .insert([{ 
+          exam_id: scanExamId, 
+          year: parseInt(newPaperYear, 10), 
+          session: newPaperSession.trim() || null, 
+          shift: newPaperShift.trim() || null 
+        }])
+        .select('id, year, session, shift, exam_id')
+        .single();
+
+      if (error) throw error;
+
+      flashSuccess(`Paper sitting created successfully!`);
+      setNewPaperSession('');
+      setNewPaperShift('');
+      setShowNewPaperModal(false);
+      
+      const freshMeta = await getFilterMetaData(true);
+      setMeta(freshMeta);
+      setScanPaperId(data.id);
+    } catch (err) {
+      console.error(err);
+      flashError(err.message || 'Failed to create paper sitting.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleScanFileChange = (e) => {
     const file = e.target.files[0];
     if (file && file.type.startsWith('image/')) {
       setScannerFile(file);
       const url = URL.createObjectURL(file);
       setScannerPreview(url);
-      setScannedQuestion(null);
+      setScannedQuestions([]);
+      setSelectedQuestions([]);
       flashSuccess('Image loaded successfully.');
     } else if (file) {
       flashError('Please select a valid image file (PNG, JPG, WebP).');
@@ -583,7 +791,8 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
       setScannerFile(file);
       const url = URL.createObjectURL(file);
       setScannerPreview(url);
-      setScannedQuestion(null);
+      setScannedQuestions([]);
+      setSelectedQuestions([]);
       flashSuccess('Image dropped successfully.');
     } else if (file) {
       flashError('Please drop a valid image file.');
@@ -595,6 +804,7 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
     if (!geminiKey.trim()) return flashError('Please enter a Gemini API Key.');
     
     setScanning(true);
+    setScannedQuestions([]);
     setErrorMsg('');
     setSuccessMsg('');
 
@@ -615,18 +825,33 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
       const base64Data = await base64Promise;
       const parsedData = await runGeminiScan(base64Data, scannerFile.type, geminiKey.trim());
 
-      // Format options to ensure we have standard MCQ indexes (default to 4 options if returned fewer)
-      if (parsedData.type !== 'numerical' && parsedData.options) {
-        const letters = ['A', 'B', 'C', 'D'];
-        const filledOptions = letters.map(letter => {
-          const parsedOpt = parsedData.options.find(o => o.letter.toUpperCase() === letter);
-          return parsedOpt || { letter, content: '', is_correct: false };
-        });
-        parsedData.options = filledOptions;
-      }
+      const questionsList = parsedData.questions || [];
+      const startNum = parseInt(scanNumber, 10) || 1;
+      
+      const processedList = questionsList.map((q, idx) => {
+        const resolvedNum = q.question_number || (startNum + idx);
+        
+        let resolvedOpts = q.options || [];
+        if (q.type !== 'numerical') {
+          const letters = ['A', 'B', 'C', 'D'];
+          resolvedOpts = letters.map(letter => {
+            const parsedOpt = resolvedOpts.find(o => o.letter.toUpperCase() === letter);
+            return parsedOpt || { letter, content: '', is_correct: false };
+          });
+        }
 
-      setScannedQuestion(parsedData);
-      flashSuccess('AI scanning complete! Please review and save the question.');
+        return {
+          ...q,
+          question_number: resolvedNum.toString(),
+          options: resolvedOpts,
+          image_urls: q.image_urls || []
+        };
+      });
+
+      setScannedQuestions(processedList);
+      setSelectedQuestions(new Array(processedList.length).fill(true));
+      setActiveEditIndex(0);
+      flashSuccess(`AI scanning complete! Found ${processedList.length} questions. Please review them below.`);
     } catch (err) {
       console.error(err);
       flashError(err.message || 'AI Scan failed. Please check your API key and try again.');
@@ -638,116 +863,145 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
   const handleClearScanner = () => {
     setScannerFile(null);
     setScannerPreview(null);
-    setScannedQuestion(null);
+    setScannedQuestions([]);
+    setSelectedQuestions([]);
+    setActiveEditIndex(0);
     setErrorMsg('');
     setSuccessMsg('');
   };
 
-  const handleScannedFieldChange = (field, value) => {
-    setScannedQuestion(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const handleScannedOptionChange = (index, field, value) => {
-    setScannedQuestion(prev => {
-      const updatedOpts = [...prev.options];
-      updatedOpts[index] = { ...updatedOpts[index], [field]: value };
-      
-      if (prev.type === 'mcq_single' && field === 'is_correct' && value === true) {
-        updatedOpts.forEach((opt, idx) => {
-          if (idx !== index) opt.is_correct = false;
-        });
-      }
-      return { ...prev, options: updatedOpts };
+  const handleScannedFieldChange = (index, field, value) => {
+    setScannedQuestions(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
     });
   };
 
-  const handleSaveScannedQuestion = async (e) => {
+  const handleScannedOptionChange = (qIndex, oIndex, field, value) => {
+    setScannedQuestions(prev => {
+      const updated = [...prev];
+      const updatedOpts = [...updated[qIndex].options];
+      updatedOpts[oIndex] = { ...updatedOpts[oIndex], [field]: value };
+      
+      if (updated[qIndex].type === 'mcq_single' && field === 'is_correct' && value === true) {
+        updatedOpts.forEach((opt, idx) => {
+          if (idx !== oIndex) opt.is_correct = false;
+        });
+      }
+      updated[qIndex].options = updatedOpts;
+      return updated;
+    });
+  };
+
+  const handleToggleSelectQuestion = (index) => {
+    setSelectedQuestions(prev => {
+      const updated = [...prev];
+      updated[index] = !updated[index];
+      return updated;
+    });
+  };
+
+  const handleSaveScannedQuestions = async (e) => {
     e.preventDefault();
-    if (!scannedQuestion) return;
+    if (scannedQuestions.length === 0) return;
     
-    if (!scanExamId || !scanSubId || !scanChapId || !scanTopicId || !scanPaperId || !scannedQuestion.content.trim()) {
-      return flashError('Please fill in all core question metadata fields and content.');
+    const importList = scannedQuestions.filter((_, idx) => selectedQuestions[idx]);
+    if (importList.length === 0) {
+      return flashError('Please select at least one question to import.');
+    }
+
+    if (!scanExamId || !scanSubId || !scanChapId || !scanTopicId || !scanPaperId) {
+      return flashError('Please select all target metadata fields.');
     }
 
     setSubmitting(true);
     setErrorMsg('');
     setSuccessMsg('');
 
+    let successCount = 0;
+
     try {
-      // 1. Insert Core Question
-      const questionPayload = {
-        exam_id: scanExamId,
-        subject_id: scanSubId,
-        chapter_id: scanChapId,
-        topic_id: scanTopicId,
-        paper_id: scanPaperId,
-        question_number: parseInt(scanNumber, 10) || 1,
-        type: scannedQuestion.type,
-        content: scannedQuestion.content.trim(),
-        difficulty: scannedQuestion.difficulty,
-        marks: 4,
-        negative_marks: scannedQuestion.type === 'numerical' ? 0 : 1,
-        status: 'published'
-      };
+      for (let i = 0; i < importList.length; i++) {
+        const q = importList[i];
+        
+        // 1. Insert Core Question
+        const questionPayload = {
+          exam_id: scanExamId,
+          subject_id: scanSubId,
+          chapter_id: scanChapId,
+          topic_id: scanTopicId,
+          paper_id: scanPaperId,
+          question_number: parseInt(q.question_number, 10) || 1,
+          type: q.type,
+          content: q.content.trim(),
+          difficulty: q.difficulty,
+          image_urls: q.image_urls || [],
+          marks: 4,
+          negative_marks: q.type === 'numerical' ? 0 : 1,
+          status: 'published'
+        };
 
-      if (scannedQuestion.type === 'numerical') {
-        questionPayload.numerical_answer = parseFloat(scannedQuestion.numerical_answer);
-        questionPayload.numerical_tolerance = parseFloat(scannedQuestion.numerical_tolerance) || 0;
-      }
-
-      const { data: qData, error: qErr } = await supabase
-        .from('questions')
-        .insert([questionPayload])
-        .select('id')
-        .single();
-
-      if (qErr) throw qErr;
-      const questionId = qData.id;
-
-      // 2. Insert Options if MCQ type
-      if (scannedQuestion.type === 'mcq_single' || scannedQuestion.type === 'mcq_multiple') {
-        const optionsPayload = (scannedQuestion.options || [])
-          .filter(opt => opt.content && opt.content.trim() !== '')
-          .map(opt => ({
-            question_id: questionId,
-            option_letter: opt.letter,
-            content: opt.content.trim(),
-            is_correct: opt.is_correct || false
-          }));
-
-        if (optionsPayload.length > 0) {
-          const { error: optErr } = await supabase
-            .from('question_options')
-            .insert(optionsPayload);
-          if (optErr) throw optErr;
+        if (q.type === 'numerical') {
+          questionPayload.numerical_answer = parseFloat(q.numerical_answer);
+          questionPayload.numerical_tolerance = parseFloat(q.numerical_tolerance) || 0;
         }
+
+        const { data: qData, error: qErr } = await supabase
+          .from('questions')
+          .insert([questionPayload])
+          .select('id')
+          .single();
+
+        if (qErr) throw qErr;
+        const questionId = qData.id;
+
+        // 2. Insert Options if MCQ type
+        if (q.type === 'mcq_single' || q.type === 'mcq_multiple') {
+          const optionsPayload = (q.options || [])
+            .filter(opt => opt.content && opt.content.trim() !== '')
+            .map(opt => ({
+              question_id: questionId,
+              option_letter: opt.letter,
+              content: opt.content.trim(),
+              is_correct: opt.is_correct || false
+            }));
+
+          if (optionsPayload.length > 0) {
+            const { error: optErr } = await supabase
+              .from('question_options')
+              .insert(optionsPayload);
+            if (optErr) throw optErr;
+          }
+        }
+
+        // 3. Insert Solution if present
+        if (q.solution && q.solution.trim()) {
+          const { error: solErr } = await supabase
+            .from('question_solutions')
+            .insert([{
+              question_id: questionId,
+              content: q.solution.trim(),
+              video_url: null
+            }]);
+          if (solErr) throw solErr;
+        }
+
+        successCount++;
       }
 
-      // 3. Insert Solution if present
-      if (scannedQuestion.solution && scannedQuestion.solution.trim()) {
-        const { error: solErr } = await supabase
-          .from('question_solutions')
-          .insert([{
-            question_id: questionId,
-            content: scannedQuestion.solution.trim(),
-            video_url: null
-          }]);
-        if (solErr) throw solErr;
-      }
-
-      flashSuccess(`Scanned Question #${scanNumber} saved successfully!`);
-      setScanNumber(prev => (parseInt(prev, 10) + 1).toString());
+      flashSuccess(`Successfully imported ${successCount} questions!`);
+      setScanNumber(prev => (parseInt(prev, 10) + successCount).toString());
       
       setScannerFile(null);
       setScannerPreview(null);
-      setScannedQuestion(null);
+      setScannedQuestions([]);
+      setSelectedQuestions([]);
+      setActiveEditIndex(0);
       loadFreshMeta();
     } catch (err) {
       console.error(err);
-      flashError(err.message || 'Failed to save scanned question.');
+      flashError(`Import failed after inserting ${successCount} questions: ${err.message}`);
     } finally {
       setSubmitting(false);
     }
@@ -1441,6 +1695,46 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
                   />
                 </div>
 
+                {/* Question Image Diagrams */}
+                <div className="admin-field mt-4">
+                  <label className="flex items-center gap-1.5 font-semibold text-sm">
+                    <Image size={16} className="text-emerald-500" />
+                    <span>Question Diagrams / Figures (Optional)</span>
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center mt-2">
+                    <label className="cursor-pointer px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-800 transition-colors flex items-center gap-2">
+                      <Upload size={14} />
+                      <span>{uploadingImage ? 'Uploading Image...' : 'Choose Diagram File'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleManualImageUpload}
+                        disabled={uploadingImage}
+                        className="hidden"
+                      />
+                    </label>
+                    {uploadingImage && <Loader2 size={16} className="animate-spin text-emerald-500" />}
+                  </div>
+                  
+                  {/* Thumbnails of manual uploaded images */}
+                  {qImageUrls.length > 0 && (
+                    <div className="flex flex-wrap gap-3 mt-3">
+                      {qImageUrls.map((url, idx) => (
+                        <div key={idx} className="relative group w-20 h-20 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
+                          <img src={url} alt={`Preview ${idx + 1}`} className="max-w-full max-h-full object-contain" />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveManualImage(idx)}
+                            className="absolute inset-0 bg-red-650/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Conditional Inputs: Options for MCQ */}
                 {(qType === 'mcq_single' || qType === 'mcq_multiple') && (
                   <div className="admin-mcq-options-container mt-6">
@@ -1657,36 +1951,69 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
 
                     <div className="admin-field">
                       <label>Chapter Target</label>
-                      <select value={scanChapId} onChange={(e) => setScanChapId(e.target.value)} required>
-                        {scanAvailableChapters.map(ch => (
-                          <option key={ch.id} value={ch.id}>{ch.name}</option>
-                        ))}
-                        {scanAvailableChapters.length === 0 && <option value="">No Chapters Found</option>}
-                      </select>
+                      <div className="flex gap-2 items-center">
+                        <select value={scanChapId} onChange={(e) => setScanChapId(e.target.value)} required className="flex-1">
+                          {scanAvailableChapters.map(ch => (
+                            <option key={ch.id} value={ch.id}>{ch.name}</option>
+                          ))}
+                          {scanAvailableChapters.length === 0 && <option value="">No Chapters Found</option>}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setShowNewChapModal(true)}
+                          disabled={!scanSubId}
+                          className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-505 hover:text-emerald-500 transition-colors shrink-0 cursor-pointer"
+                          title="Create New Chapter"
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </div>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
                     <div className="admin-field">
                       <label>Topic Target</label>
-                      <select value={scanTopicId} onChange={(e) => setScanTopicId(e.target.value)} required>
-                        {scanAvailableTopics.map(t => (
-                          <option key={t.id} value={t.id}>{t.name}</option>
-                        ))}
-                        {scanAvailableTopics.length === 0 && <option value="">No Topics Found</option>}
-                      </select>
+                      <div className="flex gap-2 items-center">
+                        <select value={scanTopicId} onChange={(e) => setScanTopicId(e.target.value)} required className="flex-1">
+                          {scanAvailableTopics.map(t => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                          ))}
+                          {scanAvailableTopics.length === 0 && <option value="">No Topics Found</option>}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setShowNewTopicModal(true)}
+                          disabled={!scanChapId}
+                          className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-505 hover:text-emerald-500 transition-colors shrink-0 cursor-pointer"
+                          title="Create New Topic"
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="admin-field">
                       <label>Paper Sitting Target</label>
-                      <select value={scanPaperId} onChange={(e) => setScanPaperId(e.target.value)} required>
-                        {scanAvailablePapers.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.year} {p.session ? `(${p.session})` : ''} {p.shift ? `— ${p.shift}` : ''}
-                          </option>
-                        ))}
-                        {scanAvailablePapers.length === 0 && <option value="">No Paper Sittings Found</option>}
-                      </select>
+                      <div className="flex gap-2 items-center">
+                        <select value={scanPaperId} onChange={(e) => setScanPaperId(e.target.value)} required className="flex-1">
+                          {scanAvailablePapers.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.year} {p.session ? `(${p.session})` : ''} {p.shift ? `— ${p.shift}` : ''}
+                            </option>
+                          ))}
+                          {scanAvailablePapers.length === 0 && <option value="">No Paper Sittings Found</option>}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPaperModal(true)}
+                          disabled={!scanExamId}
+                          className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-505 hover:text-emerald-500 transition-colors shrink-0 cursor-pointer"
+                          title="Create New Paper Sitting"
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="admin-field">
@@ -1735,7 +2062,7 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
                 </div>
 
                 {/* Image Upload Dropzone */}
-                {!scannedQuestion && (
+                {scannedQuestions.length === 0 && (
                   <div 
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleScannerDrop}
@@ -1805,30 +2132,35 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
                   </div>
                 )}
 
-                {/* Parsed Scanned Question Preview & Editor */}
-                {scannedQuestion && (
+                {/* Parsed Scanned Questions Preview & Editor List */}
+                {scannedQuestions.length > 0 && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                     
-                    {/* Left: Interactive Editor */}
-                    <form onSubmit={handleSaveScannedQuestion} className="admin-card-form w-full space-y-4">
-                      <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-850 pb-3">
-                        <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                          <Sparkles size={16} className="text-emerald-500" />
-                          Verify Scanned Question
-                        </h3>
+                    {/* Left: Collapsible List of Scanned Questions */}
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-3">
+                        <div className="space-y-0.5 text-left">
+                          <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                            <Sparkles size={16} className="text-emerald-500 animate-pulse" />
+                            Verify Scanned Questions ({scannedQuestions.length})
+                          </h3>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider">
+                            Select and edit questions before bulk saving
+                          </p>
+                        </div>
                         <div className="flex items-center gap-2">
                           <button 
                             type="button"
                             onClick={handleClearScanner}
-                            className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                            title="Discard Scan"
+                            className="p-2 text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
+                            title="Discard All Scanned"
                           >
                             <Trash2 size={16} />
                           </button>
                           <button 
                             type="button"
                             onClick={handleStartScan}
-                            className="p-2 text-slate-400 hover:text-emerald-500 transition-colors"
+                            className="p-2 text-slate-400 hover:text-emerald-500 transition-colors cursor-pointer"
                             title="Rescan Image"
                           >
                             <RefreshCw size={16} />
@@ -1836,192 +2168,320 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="admin-field">
-                          <label>Question Type</label>
-                          <select 
-                            value={scannedQuestion.type} 
-                            onChange={(e) => handleScannedFieldChange('type', e.target.value)} 
-                            required
-                          >
-                            <option value="mcq_single">Single Choice (MCQ)</option>
-                            <option value="mcq_multiple">Multiple Choice (MCQ)</option>
-                            <option value="numerical">Numerical Input</option>
-                          </select>
-                        </div>
+                      {/* Collapsible Questions Map */}
+                      <div className="space-y-3">
+                        {scannedQuestions.map((q, idx) => {
+                          const isExpanded = activeEditIndex === idx;
+                          const isChecked = selectedQuestions[idx];
+                          
+                          return (
+                            <div 
+                              key={idx} 
+                              className={`rounded-2xl border transition-all ${
+                                isExpanded 
+                                  ? 'border-emerald-500 bg-emerald-500/[0.01]' 
+                                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/40 hover:border-slate-300 dark:hover:border-slate-700'
+                              }`}
+                            >
+                              {/* Header row */}
+                              <div 
+                                className="p-4 flex items-center justify-between gap-4 cursor-pointer select-none"
+                                onClick={() => setActiveEditIndex(idx)}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <input 
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleSelectQuestion(idx);
+                                    }}
+                                    className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                                  />
+                                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500">
+                                    #{idx + 1}
+                                  </span>
+                                  <span className="text-sm font-bold text-slate-750 dark:text-slate-200 truncate max-w-[200px]">
+                                    {q.content.substring(0, 30)}...
+                                  </span>
+                                </div>
 
-                        <div className="admin-field">
-                          <label>Difficulty</label>
-                          <select 
-                            value={scannedQuestion.difficulty} 
-                            onChange={(e) => handleScannedFieldChange('difficulty', e.target.value)} 
-                            required
-                          >
-                            <option value="easy">Easy</option>
-                            <option value="medium">Medium</option>
-                            <option value="hard">Hard</option>
-                          </select>
-                        </div>
-                      </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-slate-100 dark:bg-slate-800 text-slate-505 uppercase">
+                                    {q.type.replace('mcq_', '')}
+                                  </span>
+                                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-slate-100 dark:bg-slate-800 text-slate-505 capitalize">
+                                    {q.difficulty}
+                                  </span>
+                                </div>
+                              </div>
 
-                      <div className="admin-field">
-                        <label>Question Content (Markdown + LaTeX)</label>
-                        <textarea
-                          value={scannedQuestion.content}
-                          onChange={(e) => handleScannedFieldChange('content', e.target.value)}
-                          rows={6}
-                          required
-                        />
-                      </div>
+                              {/* Collapsible Body Form */}
+                              {isExpanded && (
+                                <div className="p-4 border-t border-slate-100 dark:border-slate-850 space-y-4 text-left">
+                                  <div className="grid grid-cols-3 gap-4">
+                                    <div className="admin-field col-span-2">
+                                      <label>Question Number</label>
+                                      <input 
+                                        type="number"
+                                        value={q.question_number}
+                                        onChange={(e) => handleScannedFieldChange(idx, 'question_number', e.target.value)}
+                                        required
+                                      />
+                                    </div>
+                                    <div className="admin-field">
+                                      <label>Difficulty</label>
+                                      <select 
+                                        value={q.difficulty}
+                                        onChange={(e) => handleScannedFieldChange(idx, 'difficulty', e.target.value)}
+                                        required
+                                      >
+                                        <option value="easy">Easy</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="hard">Hard</option>
+                                      </select>
+                                    </div>
+                                  </div>
 
-                      {/* Options fields if MCQ */}
-                      {(scannedQuestion.type === 'mcq_single' || scannedQuestion.type === 'mcq_multiple') && scannedQuestion.options && (
-                        <div className="admin-mcq-options-container">
-                          <h4 className="text-xs font-extrabold text-slate-700 dark:text-slate-350 uppercase tracking-wide mb-3">Options</h4>
-                          {scannedQuestion.options.map((opt, index) => (
-                            <div key={opt.letter} className="flex gap-3 items-center mb-3">
-                              <span className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs font-extrabold flex items-center justify-center">
-                                {opt.letter}
-                              </span>
-                              <input
-                                type="text"
-                                value={opt.content}
-                                onChange={(e) => handleScannedOptionChange(index, 'content', e.target.value)}
-                                className="flex-1"
-                                placeholder={`Option ${opt.letter} content`}
-                                required={index < 2}
-                              />
-                              <label className="flex items-center gap-1.5 cursor-pointer text-xs font-extrabold shrink-0 select-none">
-                                <input
-                                  type="checkbox"
-                                  checked={opt.is_correct}
-                                  onChange={(e) => handleScannedOptionChange(index, 'is_correct', e.target.checked)}
-                                />
-                                Correct
-                              </label>
+                                  <div className="grid grid-cols-3 gap-4">
+                                    <div className="admin-field col-span-3">
+                                      <label>Question Type</label>
+                                      <select 
+                                        value={q.type}
+                                        onChange={(e) => handleScannedFieldChange(idx, 'type', e.target.value)}
+                                        required
+                                      >
+                                        <option value="mcq_single">Single Choice (MCQ)</option>
+                                        <option value="mcq_multiple">Multiple Choice (MCQ)</option>
+                                        <option value="numerical">Numerical Input</option>
+                                      </select>
+                                    </div>
+                                  </div>
+
+                                  <div className="admin-field">
+                                    <label>Question Content (Markdown + LaTeX)</label>
+                                    <textarea
+                                      value={q.content}
+                                      onChange={(e) => handleScannedFieldChange(idx, 'content', e.target.value)}
+                                      rows={5}
+                                      required
+                                    />
+                                  </div>
+
+                                  {/* Options if MCQ */}
+                                  {(q.type === 'mcq_single' || q.type === 'mcq_multiple') && q.options && (
+                                    <div className="admin-mcq-options-container">
+                                      <h4 className="text-xs font-extrabold text-slate-700 dark:text-slate-350 uppercase tracking-wide mb-3">Options</h4>
+                                      {q.options.map((opt, oIdx) => (
+                                        <div key={opt.letter} className="flex gap-3 items-center mb-3">
+                                          <span className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs font-extrabold flex items-center justify-center">
+                                            {opt.letter}
+                                          </span>
+                                          <input
+                                            type="text"
+                                            value={opt.content}
+                                            onChange={(e) => handleScannedOptionChange(idx, oIdx, 'content', e.target.value)}
+                                            className="flex-1"
+                                            placeholder={`Option ${opt.letter} content`}
+                                            required={oIdx < 2}
+                                          />
+                                          <label className="flex items-center gap-1.5 cursor-pointer text-xs font-extrabold shrink-0 select-none">
+                                            <input
+                                              type="checkbox"
+                                              checked={opt.is_correct}
+                                              onChange={(e) => handleScannedOptionChange(idx, oIdx, 'is_correct', e.target.checked)}
+                                            />
+                                            Correct
+                                          </label>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {/* Numerical field if Numerical */}
+                                  {q.type === 'numerical' && (
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="admin-field">
+                                        <label>Numerical Answer</label>
+                                        <input
+                                          type="number"
+                                          step="any"
+                                          value={q.numerical_answer || ''}
+                                          onChange={(e) => handleScannedFieldChange(idx, 'numerical_answer', e.target.value)}
+                                          required
+                                        />
+                                      </div>
+                                      <div className="admin-field">
+                                        <label>Tolerance margin</label>
+                                        <input
+                                          type="number"
+                                          step="any"
+                                          value={q.numerical_tolerance || 0}
+                                          onChange={(e) => handleScannedFieldChange(idx, 'numerical_tolerance', e.target.value)}
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Scanned Question Image Diagrams */}
+                                  <div className="admin-field mt-2">
+                                    <label className="flex items-center gap-1.5 font-semibold text-xs">
+                                      <Image size={14} className="text-emerald-500" />
+                                      <span>Question Diagrams / Figures (Optional)</span>
+                                    </label>
+                                    <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center mt-1">
+                                      <label className="cursor-pointer px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-800 transition-colors flex items-center gap-1.5">
+                                        <Upload size={12} />
+                                        <span>{uploadingImage ? 'Uploading...' : 'Upload Diagram'}</span>
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          onChange={(e) => handleScannedQuestionImageUpload(idx, e)}
+                                          disabled={uploadingImage}
+                                          className="hidden"
+                                        />
+                                      </label>
+                                      {uploadingImage && <Loader2 size={12} className="animate-spin text-emerald-500" />}
+                                    </div>
+                                    
+                                    {/* Thumbnails of scanned uploaded images */}
+                                    {q.image_urls && q.image_urls.length > 0 && (
+                                      <div className="flex flex-wrap gap-2 mt-2">
+                                        {q.image_urls.map((url, imgIdx) => (
+                                          <div key={imgIdx} className="relative group w-16 h-16 rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
+                                            <img src={url} alt={`Preview ${imgIdx + 1}`} className="max-w-full max-h-full object-contain" />
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveScannedQuestionImage(idx, imgIdx)}
+                                              className="absolute inset-0 bg-red-600/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="admin-field">
+                                    <label>Solution & Explanation</label>
+                                    <textarea
+                                      value={q.solution}
+                                      onChange={(e) => handleScannedFieldChange(idx, 'solution', e.target.value)}
+                                      rows={4}
+                                    />
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Numerical field if Numerical */}
-                      {scannedQuestion.type === 'numerical' && (
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="admin-field">
-                            <label>Numerical Answer</label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={scannedQuestion.numerical_answer || ''}
-                              onChange={(e) => handleScannedFieldChange('numerical_answer', e.target.value)}
-                              required
-                            />
-                          </div>
-                          <div className="admin-field">
-                            <label>Tolerance margin</label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={scannedQuestion.numerical_tolerance || 0}
-                              onChange={(e) => handleScannedFieldChange('numerical_tolerance', e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="admin-field">
-                        <label>Solution & Explanation</label>
-                        <textarea
-                          value={scannedQuestion.solution}
-                          onChange={(e) => handleScannedFieldChange('solution', e.target.value)}
-                          rows={4}
-                        />
+                          );
+                        })}
                       </div>
 
+                      {/* Bulk Save Actions */}
                       <button
-                        type="submit"
-                        disabled={submitting}
-                        className="admin-submit-btn"
+                        type="button"
+                        onClick={handleSaveScannedQuestions}
+                        disabled={submitting || scannedQuestions.filter((_, idx) => selectedQuestions[idx]).length === 0}
+                        className="admin-submit-btn w-full mt-4"
                       >
                         {submitting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                        Save & Import Question
+                        Save & Import Checked Questions ({scannedQuestions.filter((_, idx) => selectedQuestions[idx]).length})
                       </button>
-                    </form>
+                    </div>
 
                     {/* Right: Premium Live Question Preview Card */}
                     <div className="space-y-4">
                       <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
                         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                          Live Render Preview
+                          Live Render Preview (Question #{activeEditIndex + 1})
                         </span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                          Active Rendering
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                            Active Rendering
+                          </span>
+                        </div>
                       </div>
 
                       {/* Card rendering preview mock */}
-                      <div className="p-6 sm:p-8 rounded-3xl border text-left bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 relative overflow-hidden shadow-md">
-                        <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500" />
-                        
-                        <div className="flex justify-between items-start gap-4 mb-4">
-                          <div className="flex flex-wrap gap-2">
-                            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                              {meta?.subjects.find(s => s.id === scanSubId)?.name || 'Subject'}
-                            </span>
-                            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-455">
-                              {meta?.exams.find(e => e.id === scanExamId)?.name || 'Exam'} • {meta?.papers.find(p => p.id === scanPaperId)?.year || '2020'}
+                      {scannedQuestions[activeEditIndex] && (
+                        <div className="p-6 sm:p-8 rounded-3xl border text-left bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 relative overflow-hidden shadow-md">
+                          <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500" />
+                          
+                          <div className="flex justify-between items-start gap-4 mb-4">
+                            <div className="flex flex-wrap gap-2">
+                              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                                {meta?.subjects.find(s => s.id === scanSubId)?.name || 'Subject'}
+                              </span>
+                              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-455">
+                                {meta?.exams.find(e => e.id === scanExamId)?.name || 'Exam'} • {meta?.papers.find(p => p.id === scanPaperId)?.year || '2020'}
+                              </span>
+                            </div>
+                            <span className="text-xs font-bold text-slate-400 dark:text-slate-500">
+                              Q#{scannedQuestions[activeEditIndex].question_number}
                             </span>
                           </div>
-                          <span className="text-xs font-bold text-slate-400 dark:text-slate-500">
-                            Q#{scanNumber}
-                          </span>
+
+                          {/* Scanned Question Text */}
+                          <MathText as="p" className="text-lg sm:text-xl font-bold leading-relaxed tracking-tight text-slate-850 dark:text-slate-50 mb-6">
+                            {scannedQuestions[activeEditIndex].content || <span className="opacity-40 italic">Question content will show here...</span>}
+                          </MathText>
+
+                          {/* Scanned Question Images Preview */}
+                          {scannedQuestions[activeEditIndex].image_urls && scannedQuestions[activeEditIndex].image_urls.length > 0 && (
+                            <div className="flex flex-col gap-3 my-4 bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-850">
+                              {scannedQuestions[activeEditIndex].image_urls.map((url, idx) => (
+                                <img
+                                  key={idx}
+                                  src={url}
+                                  alt={`Question figure ${idx + 1}`}
+                                  className="max-h-60 object-contain rounded-lg mx-auto"
+                                />
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Options if MCQ */}
+                          {scannedQuestions[activeEditIndex].type !== 'numerical' && scannedQuestions[activeEditIndex].options && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                              {scannedQuestions[activeEditIndex].options.map((opt, idx) => (
+                                <div 
+                                  key={idx}
+                                  className={`p-4 rounded-2xl border text-sm sm:text-base text-left font-semibold flex items-center gap-3.5 w-full bg-slate-50 dark:bg-slate-950/50 ${
+                                    opt.is_correct 
+                                      ? 'border-emerald-500 text-emerald-700 dark:text-emerald-400 bg-emerald-500/5' 
+                                      : 'border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
+                                  }`}
+                                >
+                                  <span className={`text-xs uppercase shrink-0 font-bold ${opt.is_correct ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                    {opt.letter.toLowerCase()}.
+                                  </span>
+                                  <MathText as="span">{opt.content || <span className="opacity-30 italic">empty option</span>}</MathText>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Numerical preview if numerical */}
+                          {scannedQuestions[activeEditIndex].type === 'numerical' && (
+                            <div className="mb-4 p-4 rounded-2xl border border-dashed border-emerald-500/25 bg-emerald-500/5 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                              Numerical Type • Answer: {scannedQuestions[activeEditIndex].numerical_answer || '—'} (±{scannedQuestions[activeEditIndex].numerical_tolerance || 0})
+                            </div>
+                          )}
+
+                          {/* Explanation block preview */}
+                          {scannedQuestions[activeEditIndex].solution && (
+                            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-850">
+                              <h4 className="text-xs font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
+                                Solution & Explanation
+                              </h4>
+                              <MathText className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-[#fbfdfc] dark:bg-slate-950 text-slate-700 dark:text-slate-300 text-xs md:text-sm font-medium leading-relaxed whitespace-pre-line">
+                                {scannedQuestions[activeEditIndex].solution}
+                              </MathText>
+                            </div>
+                          )}
                         </div>
-
-                        {/* Scanned Question Text */}
-                        <MathText as="p" className="text-lg sm:text-xl font-bold leading-relaxed tracking-tight text-slate-850 dark:text-slate-50 mb-6">
-                          {scannedQuestion.content || <span className="opacity-40 italic">Question content will show here...</span>}
-                        </MathText>
-
-                        {/* Options if MCQ */}
-                        {scannedQuestion.type !== 'numerical' && scannedQuestion.options && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                            {scannedQuestion.options.map((opt, idx) => (
-                              <div 
-                                key={idx}
-                                className={`p-4 rounded-2xl border text-sm sm:text-base text-left font-semibold flex items-center gap-3.5 w-full bg-slate-50 dark:bg-slate-950/50 ${
-                                  opt.is_correct 
-                                    ? 'border-emerald-500 text-emerald-700 dark:text-emerald-400 bg-emerald-500/5' 
-                                    : 'border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
-                                }`}
-                              >
-                                <span className={`text-xs uppercase shrink-0 font-bold ${opt.is_correct ? 'text-emerald-500' : 'text-slate-400'}`}>
-                                  {opt.letter.toLowerCase()}.
-                                </span>
-                                <MathText as="span">{opt.content || <span className="opacity-30 italic">empty option</span>}</MathText>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Numerical preview if numerical */}
-                        {scannedQuestion.type === 'numerical' && (
-                          <div className="mb-4 p-4 rounded-2xl border border-dashed border-emerald-500/25 bg-emerald-500/5 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                            Numerical Type • Answer: {scannedQuestion.numerical_answer || '—'} (±{scannedQuestion.numerical_tolerance || 0})
-                          </div>
-                        )}
-
-                        {/* Explanation block preview */}
-                        {scannedQuestion.solution && (
-                          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-850">
-                            <h4 className="text-xs font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
-                              Solution & Explanation
-                            </h4>
-                            <MathText className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-[#fbfdfc] dark:bg-slate-950 text-slate-700 dark:text-slate-300 text-xs md:text-sm font-medium leading-relaxed whitespace-pre-line">
-                              {scannedQuestion.solution}
-                            </MathText>
-                          </div>
-                        )}
-                      </div>
+                      )}
 
                       {/* Original image reference check */}
                       {scannerPreview && (
@@ -2044,6 +2504,151 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
         )}
 
       </main>
+
+      {/* Inline Create Chapter Modal */}
+      {showNewChapModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200 text-left">
+            <h3 className="text-base font-extrabold text-slate-900 dark:text-white mb-4">Create New Chapter</h3>
+            <form onSubmit={handleInlineCreateChapter} className="space-y-4">
+              <div className="admin-field">
+                <label>Chapter Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Kinematics"
+                  value={newChapName}
+                  onChange={(e) => setNewChapName(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="admin-field">
+                <label>Sequence Order</label>
+                <input
+                  type="number"
+                  placeholder="1"
+                  value={newChapSeq}
+                  onChange={(e) => setNewChapSeq(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex gap-3 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowNewChapModal(false); setNewChapName(''); }}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-250 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 bg-emerald-500 text-slate-950 font-bold text-xs rounded-xl hover:bg-emerald-450 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  {submitting && <Loader2 size={12} className="animate-spin" />}
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Inline Create Topic Modal */}
+      {showNewTopicModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200 text-left">
+            <h3 className="text-base font-extrabold text-slate-900 dark:text-white mb-4">Create New Topic</h3>
+            <form onSubmit={handleInlineCreateTopic} className="space-y-4">
+              <div className="admin-field">
+                <label>Topic Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Projectile Motion"
+                  value={newTopicName}
+                  onChange={(e) => setNewTopicName(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-3 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowNewTopicModal(false); setNewTopicName(''); }}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-250 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 bg-emerald-500 text-slate-950 font-bold text-xs rounded-xl hover:bg-emerald-450 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  {submitting && <Loader2 size={12} className="animate-spin" />}
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Inline Create Paper Sitting Modal */}
+      {showNewPaperModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200 text-left">
+            <h3 className="text-base font-extrabold text-slate-900 dark:text-white mb-4">Create Paper Sitting</h3>
+            <form onSubmit={handleInlineCreatePaper} className="space-y-4">
+              <div className="admin-field">
+                <label>Year</label>
+                <input
+                  type="number"
+                  placeholder="2026"
+                  value={newPaperYear}
+                  onChange={(e) => setNewPaperYear(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="admin-field">
+                <label>Session (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Session 1, January"
+                  value={newPaperSession}
+                  onChange={(e) => setNewPaperSession(e.target.value)}
+                />
+              </div>
+              <div className="admin-field">
+                <label>Shift / Sitting (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Shift 1, Morning Shift"
+                  value={newPaperShift}
+                  onChange={(e) => setNewPaperShift(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-3 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowNewPaperModal(false); }}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-250 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 bg-emerald-500 text-slate-950 font-bold text-xs rounded-xl hover:bg-emerald-450 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  {submitting && <Loader2 size={12} className="animate-spin" />}
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

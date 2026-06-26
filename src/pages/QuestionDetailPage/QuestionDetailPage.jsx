@@ -4,6 +4,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar/Navbar.jsx';
 import { getQuestionById } from '../../services/questionService.js';
 import { ArrowLeft, Copy, Check, Calendar, Landmark, Book, FileQuestion } from 'lucide-react';
+import MathText from '../../components/MathText/MathText.jsx';
 
 /**
  * QuestionDetailPage - Dynamic route detail view.
@@ -103,9 +104,23 @@ export default function QuestionDetailPage() {
           </div>
 
           <div className="space-y-4">
-            <p className="text-lg md:text-xl font-medium leading-relaxed tracking-tight text-slate-800 dark:text-slate-100 select-all">
+            <MathText as="p" className="text-lg md:text-xl font-medium leading-relaxed tracking-tight text-slate-800 dark:text-slate-100 select-all">
               {question.content}
-            </p>
+            </MathText>
+
+            {/* Question Images */}
+            {question.image_urls && question.image_urls.length > 0 && (
+              <div className="flex flex-col gap-3 my-4 bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-850">
+                {question.image_urls.map((url, idx) => (
+                  <img
+                    key={idx}
+                    src={url}
+                    alt={`Question figure ${idx + 1}`}
+                    className="max-h-96 object-contain rounded-lg mx-auto"
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
