@@ -90,7 +90,10 @@ export default function AdminPage() {
   const [scannerFile, setScannerFile] = useState(null);
   const [scannerPreview, setScannerPreview] = useState(null);
   const [scanning, setScanning] = useState(false);
-  const [scannedQuestion, setScannedQuestion] = useState(null);
+  const [scannedQuestions, setScannedQuestions] = useState([]);
+  const [selectedQuestions, setSelectedQuestions] = useState([]);
+  const [activeEditIndex, setActiveEditIndex] = useState(0);
+
 
   // Scanner metadata selections
   const [scanExamId, setScanExamId] = useState('');
