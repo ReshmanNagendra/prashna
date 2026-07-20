@@ -1,9 +1,10 @@
 // src/components/QuestionCard/QuestionCard.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowUpRight, Bookmark, Sparkles, ChevronDown, ChevronUp, Edit3 } from 'lucide-react';
+import { ArrowUpRight, Bookmark, Sparkles, ChevronDown, ChevronUp, Edit3, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { toggleBookmark, getBookmarkedIds } from '../../services/bookmarkService.js';
+import { deleteQuestion } from '../../services/questionService.js';
 import MathText from '../MathText/MathText.jsx';
 
 /**
@@ -96,6 +97,26 @@ export default function QuestionCard({ question, siblingTopics }) {
     if (selectedOption === null) setSelectedOption(index);
   };
 
+  const handleDeleteQuestion = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to permanently delete Question #${question.question_number || ''}?\n\nThis will remove this question, its choices, and explanation. This action cannot be undone.`)) {
+      return;
+    }
+
+    setBookmarkBusy(true);
+    try {
+      await deleteQuestion(id);
+      alert('Question deleted successfully!');
+      window.location.reload();
+    } catch (err) {
+      console.error(err);
+      alert(`Failed to delete question: ${err.message}`);
+    } finally {
+      setBookmarkBusy(false);
+    }
+  };
+
   const getSubjectStyle = () => {
     switch (subjectName.toLowerCase()) {
       case 'physics':     return 'bg-blue-500/10 text-blue-600 dark:text-blue-400';
@@ -162,6 +183,17 @@ export default function QuestionCard({ question, siblingTopics }) {
               >
                 <Edit3 size={14} />
               </Link>
+            )}
+            {/* Delete button (Admin only) */}
+            {userRole === 'admin' && (
+              <button
+                type="button"
+                onClick={handleDeleteQuestion}
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-slate-50 dark:hover:bg-slate-850 transition-all cursor-pointer"
+                title="Delete Question"
+              >
+                <Trash2 size={14} />
+              </button>
             )}
             {/* View Details Link */}
             <Link

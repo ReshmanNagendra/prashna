@@ -199,3 +199,18 @@ export async function getFilterMetaData(bust = false) {
 export function clearMetaCache() {
   _metaCache = null;
 }
+
+/**
+ * Deletes a question from the database.
+ * @param {string} id - UUID of the question to delete
+ * @returns {Promise<boolean>}
+ */
+export async function deleteQuestion(id) {
+  const { error } = await supabase
+    .from('questions')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+  clearMetaCache(); // clear cache so count/lists update
+  return true;
+}

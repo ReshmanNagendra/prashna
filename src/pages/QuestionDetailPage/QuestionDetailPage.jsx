@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar/Navbar.jsx';
 import { getQuestionById } from '../../services/questionService.js';
-import { ArrowLeft, Copy, Check, Calendar, Landmark, Book, FileQuestion, Edit3 } from 'lucide-react';
+import { ArrowLeft, Copy, Check, Calendar, Landmark, Book, FileQuestion, Edit3, Trash2 } from 'lucide-react';
 import MathText from '../../components/MathText/MathText.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 
@@ -48,6 +48,22 @@ export default function QuestionDetailPage() {
       navigator.clipboard.writeText(question.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleDeleteQuestion = async () => {
+    if (!window.confirm(`Are you sure you want to permanently delete this question?\n\nThis will remove this question, its options, and explanation. This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const { deleteQuestion } = await import('../../services/questionService.js');
+      await deleteQuestion(question.id);
+      alert('Question deleted successfully!');
+      navigate('/questions');
+    } catch (err) {
+      console.error(err);
+      alert(`Failed to delete question: ${err.message}`);
     }
   };
 
@@ -96,6 +112,17 @@ export default function QuestionDetailPage() {
                   <Edit3 size={14} />
                   <span>Edit Question</span>
                 </Link>
+              )}
+
+              {/* Delete Question Button for Admin */}
+              {userRole === 'admin' && (
+                <button
+                  onClick={handleDeleteQuestion}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-bold text-red-650 hover:text-red-500 dark:text-red-450 dark:hover:text-red-350 hover:bg-slate-50 dark:hover:bg-slate-850 transition-all cursor-pointer"
+                >
+                  <Trash2 size={14} />
+                  <span>Delete Question</span>
+                </button>
               )}
 
               {/* Clipboard Copy Option */}

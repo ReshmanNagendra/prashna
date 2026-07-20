@@ -409,6 +409,34 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeletePaper = async (paperId, year, session, shift) => {
+    const desc = `${year}${session ? ` ${session}` : ''}${shift ? ` — ${shift}` : ''}`;
+    if (!window.confirm(`Are you sure you want to delete paper sitting "${desc}"?\n\nWARNING: This will permanently delete ALL questions, options, and solutions associated with this shift/sitting! This action is irreversible.`)) {
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    try {
+      const { error } = await supabase
+        .from('papers')
+        .delete()
+        .eq('id', paperId);
+
+      if (error) throw error;
+
+      flashSuccess(`Successfully deleted paper sitting "${desc}" and all related questions!`);
+      loadFreshMeta();
+    } catch (err) {
+      console.error(err);
+      flashError(`Failed to delete paper sitting: ${err.message}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // Helper to upload diagram to Supabase public storage bucket
   const uploadImageToSupabase = async (file) => {
     const fileExt = file.name.split('.').pop();
@@ -1723,58 +1751,108 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
 
             {/* 3. PAPERS / SITTINGS TAB */}
             {activeTab === 'papers' && (
-              <form onSubmit={handleCreatePaper} className="admin-card-form max-w-xl mx-auto">
-                <h2 className="admin-form-title text-center">Create Exam Paper Sitting</h2>
-                
-                <div className="admin-field">
-                  <label>Exam Category</label>
-                  <select
-                    value={paperExamId}
-                    onChange={(e) => setPaperExamId(e.target.value)}
-                    required
-                  >
-                    {meta?.exams.map(ex => (
-                      <option key={ex.id} value={ex.id}>{ex.name}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="space-y-8 max-w-4xl mx-auto">
+                <form onSubmit={handleCreatePaper} className="admin-card-form w-full">
+                  <h2 className="admin-form-title text-center">Create Exam Paper Sitting</h2>
+                  
+                  <div className="admin-field">
+                    <label>Exam Category</label>
+                    <select
+                      value={paperExamId}
+                      onChange={(e) => setPaperExamId(e.target.value)}
+                      required
+                    >
+                      {meta?.exams.map(ex => (
+                        <option key={ex.id} value={ex.id}>{ex.name}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div className="admin-field">
-                  <label>Year</label>
-                  <input
-                    type="number"
-                    placeholder="e.g. 2026"
-                    value={paperYear}
-                    onChange={(e) => setPaperYear(e.target.value)}
-                    required
-                  />
-                </div>
+                  <div className="admin-field">
+                    <label>Year</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 2026"
+                      value={paperYear}
+                      onChange={(e) => setPaperYear(e.target.value)}
+                      required
+                    />
+                  </div>
 
-                <div className="admin-field">
-                  <label>Session (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. January Session, Phase 2"
-                    value={paperSession}
-                    onChange={(e) => setPaperSession(e.target.value)}
-                  />
-                </div>
+                  <div className="admin-field">
+                    <label>Session (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. January Session, Phase 2"
+                      value={paperSession}
+                      onChange={(e) => setPaperSession(e.target.value)}
+                    />
+                  </div>
 
-                <div className="admin-field">
-                  <label>Shift / Sitting (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Shift 1, Evening Shift"
-                    value={paperShift}
-                    onChange={(e) => setPaperShift(e.target.value)}
-                  />
-                </div>
+                  <div className="admin-field">
+                    <label>Shift / Sitting (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Shift 1, Evening Shift"
+                      value={paperShift}
+                      onChange={(e) => setPaperShift(e.target.value)}
+                    />
+                  </div>
 
-                <button className="admin-submit-btn" type="submit" disabled={submitting || !paperExamId}>
-                  {submitting ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                  Create Paper Sitting
-                </button>
-              </form>
+                  <button className="admin-submit-btn" type="submit" disabled={submitting || !paperExamId}>
+                    {submitting ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                    Create Paper Sitting
+                  </button>
+                </form>
+
+                {/* List of Existing Papers/Sittings */}
+                <div className="mt-8 pt-8 border-t border-slate-200 dark:border-slate-800 text-left">
+                  <h3 className="text-base font-extrabold text-slate-850 dark:text-slate-200 mb-4">
+                    Existing Paper Sittings / Shifts ({meta?.papers.length || 0})
+                  </h3>
+                  {meta?.papers.length === 0 ? (
+                    <p className="text-sm text-slate-400 dark:text-slate-500 italic">No paper sittings found.</p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                      <table className="w-full text-sm text-left text-slate-650 dark:text-slate-350">
+                        <thead className="text-xs uppercase bg-slate-55/50 dark:bg-slate-850/50 text-slate-400 dark:text-slate-500 border-b border-slate-200 dark:border-slate-800">
+                          <tr>
+                            <th scope="col" className="px-4 py-3">Exam</th>
+                            <th scope="col" className="px-4 py-3">Year</th>
+                            <th scope="col" className="px-4 py-3">Session</th>
+                            <th scope="col" className="px-4 py-3">Shift</th>
+                            <th scope="col" className="px-4 py-3 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {meta.papers.map((p) => {
+                            const examName = meta.exams.find(e => e.id === p.exam_id)?.name || '—';
+                            return (
+                              <tr key={p.id} className="border-b border-slate-100 dark:border-slate-855 bg-white dark:bg-slate-900/20 hover:bg-slate-50 dark:hover:bg-slate-850/20 transition-all">
+                                <td className="px-4 py-3 font-bold text-slate-800 dark:text-slate-200">{examName}</td>
+                                <td className="px-4 py-3 font-semibold">{p.year}</td>
+                                <td className="px-4 py-3">{p.session || '—'}</td>
+                                <td className="px-4 py-3">{p.shift || '—'}</td>
+                                <td className="px-4 py-3 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeletePaper(p.id, p.year, p.session, p.shift)}
+                                    disabled={submitting}
+                                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-red-500 hover:text-red-500 dark:hover:border-red-600 dark:hover:text-red-400 text-slate-400 transition-all cursor-pointer"
+                                    title="Delete Shift / Paper"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
 
             {/* 4. QUESTIONS INSERTION TAB */}
