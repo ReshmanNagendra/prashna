@@ -3,8 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar/Navbar.jsx';
 import { getQuestionById } from '../../services/questionService.js';
-import { ArrowLeft, Copy, Check, Calendar, Landmark, Book, FileQuestion } from 'lucide-react';
+import { ArrowLeft, Copy, Check, Calendar, Landmark, Book, FileQuestion, Edit3 } from 'lucide-react';
 import MathText from '../../components/MathText/MathText.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 /**
  * QuestionDetailPage - Dynamic route detail view.
@@ -16,6 +17,7 @@ import MathText from '../../components/MathText/MathText.jsx';
 export default function QuestionDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { userRole } = useAuth();
   const [question, setQuestion] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -84,23 +86,36 @@ export default function QuestionDetailPage() {
               Question #{question.id}
             </span>
             
-            {/* Clipboard Copy Option */}
-            <button
-              onClick={handleCopy}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
-            >
-              {copied ? (
-                <>
-                  <Check size={14} className="text-emerald-500" />
-                  <span className="text-emerald-500">Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy size={14} />
-                  <span>Copy Question</span>
-                </>
+            <div className="flex items-center gap-2">
+              {/* Edit Question Link for Admin */}
+              {userRole === 'admin' && (
+                <Link
+                  to={`/admin?editQuestionId=${question.id}`}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-bold text-emerald-600 hover:text-emerald-505 dark:text-emerald-450 dark:hover:text-emerald-350 hover:bg-slate-50 dark:hover:bg-slate-850 transition-all cursor-pointer"
+                >
+                  <Edit3 size={14} />
+                  <span>Edit Question</span>
+                </Link>
               )}
-            </button>
+
+              {/* Clipboard Copy Option */}
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
+              >
+                {copied ? (
+                  <>
+                    <Check size={14} className="text-emerald-500" />
+                    <span className="text-emerald-500">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy size={14} />
+                    <span>Copy Question</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="space-y-4">

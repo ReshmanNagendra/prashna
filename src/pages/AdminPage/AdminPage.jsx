@@ -1,6 +1,6 @@
 // src/pages/AdminPage/AdminPage.jsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import Navbar from '../../components/Navbar/Navbar.jsx';
 import { getFilterMetaData } from '../../services/questionService.js';
@@ -117,6 +117,9 @@ export default function AdminPage() {
   const [newPaperShift, setNewPaperShift] = useState('');
 
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editQuestionId = searchParams.get('editQuestionId');
+  const [isHydratingEdit, setIsHydratingEdit] = useState(false);
 
   // 1. Verify User Role on Mount
   useEffect(() => {
@@ -269,36 +272,40 @@ export default function AdminPage() {
 
   // Sync sub selections when exam or subject changes in Question Form
   useEffect(() => {
+    if (isHydratingEdit) return;
     if (availableSubjects.length > 0) {
       setQSubId(availableSubjects[0].id);
     } else {
       setQSubId('');
     }
-  }, [qExamId, meta]);
+  }, [qExamId, meta, isHydratingEdit]);
 
   useEffect(() => {
+    if (isHydratingEdit) return;
     if (availableChapters.length > 0) {
       setQChapId(availableChapters[0].id);
     } else {
       setQChapId('');
     }
-  }, [qSubId, meta]);
+  }, [qSubId, meta, isHydratingEdit]);
 
   useEffect(() => {
+    if (isHydratingEdit) return;
     if (availableTopics.length > 0) {
       setQTopicId(availableTopics[0].id);
     } else {
       setQTopicId('');
     }
-  }, [qChapId, meta]);
+  }, [qChapId, meta, isHydratingEdit]);
 
   useEffect(() => {
+    if (isHydratingEdit) return;
     if (availablePapers.length > 0) {
       setQPaperId(availablePapers[0].id);
     } else {
       setQPaperId('');
     }
-  }, [qExamId, meta]);
+  }, [qExamId, meta, isHydratingEdit]);
 
   // ── Form Submissions ──
   
@@ -477,6 +484,212 @@ export default function AdminPage() {
       };
       return updated;
     });
+  };
+
+  // Load question for editing if editQuestionId is present (Admin only)
+  useEffect(() => {
+    if (!editQuestionId) return;
+
+    if (userRole && userRole !== 'admin') {
+      flashError('Access Denied: Only administrators are permitted to edit questions.');
+      setSearchParams({});
+      return;
+    }
+
+    setActiveTab('questions');
+    setLoadingMeta(true);
+
+    const loadQuestionToEdit = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('questions')
+          .select(`
+            *,
+            question_options(*),
+            question_solutions(*)
+          `)
+          .eq('id', editQuestionId)
+          .single();
+
+        if (error || !data) throw error || new Error('No data found');
+
+        // Prepopulate form states with editing values
+        setIsHydratingEdit(true);
+        setQExamId(data.exam_id);
+        setQSubId(data.subject_id);
+        setQChapId(data.chapter_id);
+        setQTopicId(data.topic_id);
+        setQPaperId(data.paper_id);
+        setQNumber(data.question_number.toString());
+        setQType(data.type);
+        setQDifficulty(data.difficulty);
+        setQMarks(data.marks.toString());
+        setQNegMarks(data.negative_marks.toString());
+        setQContent(data.content);
+        setQImageUrls(data.image_urls || []);
+
+        if (data.type !== 'numerical') {
+          const mappedOptions = ['A', 'B', 'C', 'D'].map(letter => {
+            const existing = (data.question_options || []).find(
+              o => o.option_letter.toUpperCase() === letter
+            );
+            return {
+              letter,
+              content: existing ? existing.content : '',
+              isCorrect: existing ? existing.is_correct : false
+            };
+          });
+          setOptions(mappedOptions);
+        } else {
+          setNumericalAns(data.numerical_answer?.toString() || '');
+          setNumericalTol(data.numerical_tolerance?.toString() || '0');
+        }
+
+        const sol = data.question_solutions?.[0] || data.question_solutions || null;
+        setSolContent(sol ? sol.content : '');
+        setSolVideoUrl(sol ? (sol.video_url || '') : '');
+
+        // Turn off hydration after state setting has queued
+        setTimeout(() => {
+          setIsHydratingEdit(false);
+        }, 100);
+
+        flashSuccess('Question loaded successfully for editing.');
+      } catch (err) {
+        console.error(err);
+        flashError('Failed to load question details: ' + err.message);
+        setSearchParams({});
+      } finally {
+        setLoadingMeta(false);
+      }
+    };
+
+    loadQuestionToEdit();
+  }, [editQuestionId, userRole]);
+
+  const handleCancelEdit = () => {
+    setQContent('');
+    setQNumber('1');
+    setNumericalAns('');
+    setSolContent('');
+    setSolVideoUrl('');
+    setQImageUrls([]);
+    setOptions([
+      { letter: 'A', content: '', isCorrect: false },
+      { letter: 'B', content: '', isCorrect: false },
+      { letter: 'C', content: '', isCorrect: false },
+      { letter: 'D', content: '', isCorrect: false },
+    ]);
+    setSearchParams({});
+    flashSuccess('Edit cancelled. Form reset.');
+  };
+
+  const handleUpdateQuestion = async (e) => {
+    e.preventDefault();
+    if (!qExamId || !qSubId || !qChapId || !qTopicId || !qPaperId || !qContent.trim()) {
+      return flashError('Please fill in all core question metadata fields and content.');
+    }
+
+    setSubmitting(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    try {
+      // 1. Update Core Question
+      const questionPayload = {
+        exam_id: qExamId,
+        subject_id: qSubId,
+        chapter_id: qChapId,
+        topic_id: qTopicId,
+        paper_id: qPaperId,
+        question_number: parseInt(qNumber, 10) || 1,
+        type: qType,
+        content: qContent.trim(),
+        difficulty: qDifficulty,
+        image_urls: qImageUrls,
+        marks: parseFloat(qMarks) || 4,
+        negative_marks: parseFloat(qNegMarks) || 1,
+        status: 'published'
+      };
+
+      if (qType === 'numerical') {
+        questionPayload.numerical_answer = parseFloat(numericalAns);
+        questionPayload.numerical_tolerance = parseFloat(numericalTol) || 0;
+      } else {
+        questionPayload.numerical_answer = null;
+        questionPayload.numerical_tolerance = 0;
+      }
+
+      const { error: qErr } = await supabase
+        .from('questions')
+        .update(questionPayload)
+        .eq('id', editQuestionId);
+
+      if (qErr) throw qErr;
+
+      // 2. Delete and re-insert options if MCQ type
+      await supabase
+        .from('question_options')
+        .delete()
+        .eq('question_id', editQuestionId);
+
+      if (qType === 'mcq_single' || qType === 'mcq_multiple') {
+        const optionsPayload = options
+          .filter(opt => opt.content.trim() !== '')
+          .map(opt => ({
+            question_id: editQuestionId,
+            option_letter: opt.letter,
+            content: opt.content.trim(),
+            is_correct: opt.isCorrect
+          }));
+
+        if (optionsPayload.length > 0) {
+          const { error: optErr } = await supabase
+            .from('question_options')
+            .insert(optionsPayload);
+          if (optErr) throw optErr;
+        }
+      }
+
+      // 3. Upsert Solution
+      if (solContent.trim() || solVideoUrl.trim()) {
+        const { error: solErr } = await supabase
+          .from('question_solutions')
+          .upsert({
+            question_id: editQuestionId,
+            content: solContent.trim(),
+            video_url: solVideoUrl.trim() || null
+          }, { onConflict: 'question_id' });
+        if (solErr) throw solErr;
+      } else {
+        await supabase
+          .from('question_solutions')
+          .delete()
+          .eq('question_id', editQuestionId);
+      }
+
+      flashSuccess(`Question changes saved successfully!`);
+      
+      // Reset form states and searchParams
+      setQContent('');
+      setQNumber((prev) => (parseInt(prev, 10) + 1).toString());
+      setNumericalAns('');
+      setSolContent('');
+      setSolVideoUrl('');
+      setQImageUrls([]);
+      setOptions([
+        { letter: 'A', content: '', isCorrect: false },
+        { letter: 'B', content: '', isCorrect: false },
+        { letter: 'C', content: '', isCorrect: false },
+        { letter: 'D', content: '', isCorrect: false },
+      ]);
+      setSearchParams({});
+    } catch (err) {
+      console.error(err);
+      flashError(err.message || 'Failed to update question.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // 6. Create Question (Complex insert transaction)
@@ -1566,8 +1779,10 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
 
             {/* 4. QUESTIONS INSERTION TAB */}
             {activeTab === 'questions' && (
-              <form onSubmit={handleCreateQuestion} className="admin-card-form w-full">
-                <h2 className="admin-form-title">Insert Question Paper Query</h2>
+              <form onSubmit={editQuestionId ? handleUpdateQuestion : handleCreateQuestion} className="admin-card-form w-full">
+                <h2 className="admin-form-title">
+                  {editQuestionId ? `Edit Question (ID: ${editQuestionId})` : 'Insert Question Paper Query'}
+                </h2>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {/* Select Exam */}
@@ -1820,14 +2035,26 @@ Strictly adhere to the JSON schema. Use LaTeX for mathematical formatting (use s
                   </div>
                 </div>
 
-                <button 
-                  className="admin-submit-btn mt-6" 
-                  type="submit" 
-                  disabled={submitting || !qSubId || !qChapId || !qTopicId || !qPaperId}
-                >
-                  {submitting ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                  Publish Question to Platform
-                </button>
+                <div className="flex flex-col sm:flex-row gap-4 mt-6">
+                  <button 
+                    className="admin-submit-btn flex-1" 
+                    type="submit" 
+                    disabled={submitting || !qSubId || !qChapId || !qTopicId || !qPaperId}
+                  >
+                    {submitting ? <Loader2 size={16} className="animate-spin" /> : editQuestionId ? <Save size={16} /> : <Plus size={16} />}
+                    {editQuestionId ? 'Save Question Changes' : 'Publish Question to Platform'}
+                  </button>
+
+                  {editQuestionId && (
+                    <button
+                      type="button"
+                      onClick={handleCancelEdit}
+                      className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-250 font-bold text-sm rounded-xl border border-slate-200 dark:border-slate-800 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
+                </div>
               </form>
             )}
 

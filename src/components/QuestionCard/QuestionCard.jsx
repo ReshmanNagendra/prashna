@@ -1,7 +1,7 @@
 // src/components/QuestionCard/QuestionCard.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowUpRight, Bookmark, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowUpRight, Bookmark, Sparkles, ChevronDown, ChevronUp, Edit3 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { toggleBookmark, getBookmarkedIds } from '../../services/bookmarkService.js';
 import MathText from '../MathText/MathText.jsx';
@@ -37,7 +37,7 @@ export default function QuestionCard({ question, siblingTopics }) {
   const year        = papers?.year    ?? '';
   const explanation = solutions?.[0]?.content ?? solutions?.content ?? null;
 
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
   const navigate = useNavigate();
 
   const [isBookmarked, setIsBookmarked]       = useState(false);
@@ -153,6 +153,16 @@ export default function QuestionCard({ question, siblingTopics }) {
                 className={isBookmarked ? 'fill-emerald-500 text-emerald-500' : 'text-slate-400'}
               />
             </button>
+            {/* Edit button (Admin only) */}
+            {userRole === 'admin' && (
+              <Link
+                to={`/admin?editQuestionId=${id}`}
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-slate-50 dark:hover:bg-slate-850 transition-all cursor-pointer"
+                title="Edit Question"
+              >
+                <Edit3 size={14} />
+              </Link>
+            )}
             {/* View Details Link */}
             <Link
               to={`/question/${id}`}
