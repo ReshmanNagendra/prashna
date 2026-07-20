@@ -63,6 +63,7 @@ export default function Navbar() {
     const next = !darkMode;
     setDarkMode(next);
     document.documentElement.classList.toggle('dark', next);
+    localStorage.setItem('prashna_theme', next ? 'dark' : 'light');
   };
 
   const commitSearch = () => {

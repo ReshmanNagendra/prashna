@@ -6,6 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Prashna is a high-performance previous year questions (PYQ) platform with comprehensive search, topic-wise filtering, and step-by-step solutions for JEE, NEET, and competitive exams." />
     <title>Prashna — Previous Year Questions (PYQ) Platform</title>
+    <!-- Dark Mode Hydration Script to prevent flash of light theme on load -->
+    <script>
+      if (localStorage.getItem('prashna_theme') === 'dark' || (!('prashna_theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    </script>
     <!-- Load KaTeX for high-performance LaTeX math rendering across the platform -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>

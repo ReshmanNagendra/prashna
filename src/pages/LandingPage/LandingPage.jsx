@@ -16,8 +16,10 @@ export default function LandingPage() {
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
+      localStorage.setItem('prashna_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      localStorage.setItem('prashna_theme', 'light');
     }
   }, [darkMode]);
 
